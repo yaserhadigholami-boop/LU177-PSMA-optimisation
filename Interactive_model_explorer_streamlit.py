@@ -1472,7 +1472,7 @@ with col1:
     st.metric(
         "Critical dose rate",
         (
-            f"{summary['Critical dose rate (Gy/h)']:.1f} Gy/h"
+            f"{summary['Critical dose rate (Gy/h)']:.4f} Gy/h"
         )
     )
 
