@@ -960,7 +960,7 @@ interval_days = st.sidebar.slider(
     "Cycle interval (days)",
     min_value=1,
     max_value=42,
-    value=DEFAULT_INTERVAL,
+    value=int(DEFAULT_INTERVAL),
     step=1,
 )
 
