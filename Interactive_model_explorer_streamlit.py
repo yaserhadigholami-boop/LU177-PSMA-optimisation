@@ -1,7 +1,11 @@
 import io
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
+from matplotlib.ticker import MaxNLocator
+
 import streamlit as st
 
 
@@ -21,19 +25,22 @@ st.set_page_config(
 # =============================================================================
 
 LU177_HALF_LIFE_DAYS = 6.647
-LU177_LAMBDA_PER_DAY = np.log(2.0) / LU177_HALF_LIFE_DAYS
+LU177_LAMBDA_PER_DAY = (
+    np.log(2.0) /
+    LU177_HALF_LIFE_DAYS
+)
 
-# Reference dose-rate conversion.
-# Defined for the reference metastatic burden and reference tumour uptake.
 DOSE_PER_GBQ_GY = 0.50
 
 REFERENCE_METASTATIC_BURDEN_ML = 234.0
+
 DEFAULT_TUMOUR_UPTAKE_PERCENT = 1.0
 
 TUMOUR_UPTAKE_MIN_PERCENT = 0.1
 TUMOUR_UPTAKE_MAX_PERCENT = 10.0
 
 DT_DAYS = 0.05
+
 FOLLOW_UP_DAYS = 60.0
 
 
@@ -45,7 +52,6 @@ DEFAULT_BURDEN = 234.0
 
 DEFAULT_ALPHA = 0.10
 
-# beta/alpha parameter used by the exploratory LQ model.
 DEFAULT_BETA_ALPHA = 0.10
 
 DEFAULT_TREP = 30.0
@@ -62,36 +68,30 @@ DEFAULT_ACTIVITY = 7.4
 
 DEFAULT_CYCLES = 4
 
-DEFAULT_INTERVAL = 7.0
+DEFAULT_INTERVAL = 7
 
 DEFAULT_GAMMA = 1.0
 
 
 # =============================================================================
-# NORMALISED TCP PARAMETERS
+# TCP PARAMETERS
 # =============================================================================
 
-# Exploratory initial TCP.
 INITIAL_TCP = 0.10
 
-INITIAL_CLONOGENIC_BURDEN = -np.log(
-    INITIAL_TCP
+INITIAL_CLONOGENIC_BURDEN = (
+    -np.log(INITIAL_TCP)
 )
 
 
 # =============================================================================
-# NUMERICAL INTEGRATION HELPER
+# NUMERICAL INTEGRATION
 # =============================================================================
 
 def integrate_trapezoid(y, x):
-    """
-    Robust trapezoidal integration.
-
-    Newer NumPy versions provide np.trapezoid().
-    Older versions provide np.trapz().
-    """
 
     if hasattr(np, "trapezoid"):
+
         return np.trapezoid(
             y,
             x
@@ -111,26 +111,6 @@ def calculate_dose_scaling(
     initial_burden_ml,
     tumour_uptake_percent
 ):
-    """
-    Calculate phenomenological tumour dose scaling.
-
-    Reference condition:
-        234 mL metastatic burden
-        1.0% total tumour uptake
-
-    Uptake scaling:
-        proportional to tumour uptake
-
-    Burden scaling:
-        inversely proportional to total tumour burden
-
-    Overall:
-        dose scaling =
-        uptake scaling × burden scaling
-
-    This is an exploratory scaling model and is not a substitute
-    for lesion-specific Lu-177 dosimetry.
-    """
 
     uptake_scale = (
         tumour_uptake_percent /
@@ -162,7 +142,6 @@ def calculate_treatment_times(
     n_cycles,
     interval_days
 ):
-    """Return treatment administration times."""
 
     return np.array(
         [
@@ -185,9 +164,6 @@ def calculate_physical_dose_rate(
     initial_burden_ml,
     tumour_uptake_percent
 ):
-    """
-    Calculate total physical Lu-177 dose rate.
-    """
 
     (
         uptake_scale,
@@ -198,9 +174,11 @@ def calculate_physical_dose_rate(
         tumour_uptake_percent
     )
 
-    treatment_times = calculate_treatment_times(
-        n_cycles,
-        interval_days
+    treatment_times = (
+        calculate_treatment_times(
+            n_cycles,
+            interval_days
+        )
     )
 
     dose_rate_gy_day = np.zeros_like(
@@ -253,13 +231,6 @@ def calculate_critical_dose_rate(
     alpha,
     trep_days
 ):
-    """
-    Critical dose rate:
-
-        Rcrit = ln(2) / (alpha × Trep_hours)
-
-    Returned in Gy/h.
-    """
 
     trep_hours = (
         trep_days *
@@ -284,15 +255,6 @@ def calculate_effective_dose_rate(
     critical_dose_rate_gy_h,
     gamma
 ):
-    """
-    Apply dose-rate effectiveness correction.
-
-    R = physical rate / critical rate
-
-    E = min(1, R^gamma)
-
-    Reffective = Rphysical × E
-    """
 
     critical_rate_gy_day = (
         critical_dose_rate_gy_h *
@@ -346,12 +308,6 @@ def calculate_tumour_dynamics(
     repopulation_kickoff,
     initial_burden_ml
 ):
-    """
-    Two-compartment sensitive/resistant tumour model.
-
-    Sensitive and resistant populations have different
-    radiosensitivity and proliferation kinetics.
-    """
 
     # -------------------------------------------------------------------------
     # LQ PARAMETERS
@@ -520,10 +476,7 @@ def calculate_tumour_dynamics(
     # -------------------------------------------------------------------------
     # RESISTANT COMPOSITION
     #
-    # This answers:
-    # "What percentage of the remaining tumour is resistant?"
-    #
-    # Retained as a secondary biological metric.
+    # Fraction of the remaining tumour that is resistant.
     # -------------------------------------------------------------------------
 
     resistant_composition_fraction = np.divide(
@@ -538,10 +491,9 @@ def calculate_tumour_dynamics(
     # -------------------------------------------------------------------------
     # RESIDUAL RESISTANT BURDEN
     #
-    # This is the main therapy-response metric.
+    # Percentage of the INITIAL resistant burden that remains.
     #
-    # It answers:
-    # "What percentage of the ORIGINAL resistant tumour burden remains?"
+    # This is the main resistant-disease response metric.
     # -------------------------------------------------------------------------
 
     residual_resistant_burden_percent = np.divide(
@@ -571,11 +523,6 @@ def calculate_tcp(
     total_burden_ml,
     initial_burden_ml
 ):
-    """
-    Exploratory normalised TCP model.
-
-    TCP is based on relative total tumour burden.
-    """
 
     relative_burden = np.divide(
         total_burden_ml,
@@ -619,7 +566,6 @@ def calculate_summary(
     tcp,
     treatment_times
 ):
-    """Calculate model summary statistics."""
 
     physical_rate_gy_h = (
         physical_dose_rate_gy_day /
@@ -635,14 +581,18 @@ def calculate_summary(
     # DOSE
     # -------------------------------------------------------------------------
 
-    cumulative_physical_dose = integrate_trapezoid(
-        physical_dose_rate_gy_day,
-        time_days
+    cumulative_physical_dose = (
+        integrate_trapezoid(
+            physical_dose_rate_gy_day,
+            time_days
+        )
     )
 
-    cumulative_effective_dose = integrate_trapezoid(
-        effective_dose_rate_gy_day,
-        time_days
+    cumulative_effective_dose = (
+        integrate_trapezoid(
+            effective_dose_rate_gy_day,
+            time_days
+        )
     )
 
     peak_physical_rate = np.max(
@@ -678,7 +628,7 @@ def calculate_summary(
         time_above_critical = 0.0
 
     # -------------------------------------------------------------------------
-    # LONGEST CONTINUOUS PERIOD ABOVE CRITICAL
+    # LONGEST CONTINUOUS PERIOD
     # -------------------------------------------------------------------------
 
     longest_continuous = 0.0
@@ -724,7 +674,9 @@ def calculate_summary(
         )
     ]
 
-    final_burden = total_burden[-1]
+    final_burden = (
+        total_burden[-1]
+    )
 
     maximum_tcp = np.max(
         tcp
@@ -771,16 +723,13 @@ def calculate_summary(
         resistant_burden[-1]
     )
 
-    # -------------------------------------------------------------------------
-    # TREATMENT TIMES
-    # -------------------------------------------------------------------------
-
     treatment_times_text = ", ".join(
         f"{x:.1f}"
         for x in treatment_times
     )
 
     return {
+
         "Minimum tumour burden (mL)":
             minimum_burden,
 
@@ -841,57 +790,139 @@ def calculate_summary(
 
 
 # =============================================================================
-# PROFESSIONAL PLOT STYLE
+# PROFESSIONAL DARK PLOT STYLE
 # =============================================================================
+
+# A robust font available on most Streamlit/Linux environments.
+PLOT_FONT = "DejaVu Sans"
+
+# Dark plot colours.
+PLOT_BACKGROUND = "#000000"
+PLOT_FOREGROUND = "#F2F2F2"
+PLOT_SECONDARY = "#CFCFCF"
+PLOT_GRID = "#555555"
+PLOT_TREATMENT = "#777777"
+
 
 plt.rcParams.update(
     {
-        "font.family": "DejaVu Sans",
+        "font.family": PLOT_FONT,
+
         "font.size": 10,
+
         "axes.titlesize": 13,
+
         "axes.labelsize": 10.5,
+
         "axes.titleweight": "normal",
-        "axes.linewidth": 1.0,
+
+        "axes.linewidth": 0.9,
+
         "xtick.labelsize": 9,
+
         "ytick.labelsize": 9,
+
         "legend.fontsize": 9,
+
         "figure.dpi": 120,
+
         "savefig.dpi": 600,
+
+        "text.color": PLOT_FOREGROUND,
+
+        "axes.labelcolor": PLOT_FOREGROUND,
+
+        "axes.edgecolor": PLOT_FOREGROUND,
+
+        "xtick.color": PLOT_FOREGROUND,
+
+        "ytick.color": PLOT_FOREGROUND,
+
+        "axes.facecolor": PLOT_BACKGROUND,
+
+        "figure.facecolor": PLOT_BACKGROUND,
+
+        "savefig.facecolor": PLOT_BACKGROUND,
     }
 )
 
 
+# =============================================================================
+# AXIS STYLE
+# =============================================================================
+
 def style_axis(ax):
-    """Apply consistent professional styling."""
 
-    ax.spines[
-        "top"
-    ].set_visible(False)
-
-    ax.spines[
-        "right"
-    ].set_visible(False)
-
-    ax.grid(
-        True,
-        linestyle="--",
-        linewidth=0.5,
-        alpha=0.25
+    ax.set_facecolor(
+        PLOT_BACKGROUND
     )
 
     ax.tick_params(
+        colors=PLOT_FOREGROUND,
         direction="out",
-        length=4,
+        length=4.5,
         width=0.8
     )
 
+    for spine in ax.spines.values():
+
+        spine.set_color(
+            PLOT_FOREGROUND
+        )
+
+        spine.set_linewidth(
+            0.8
+        )
+
+    ax.grid(
+        True,
+        which="major",
+        linestyle="--",
+        linewidth=0.45,
+        color=PLOT_GRID,
+        alpha=0.45
+    )
+
+    ax.grid(
+        True,
+        which="minor",
+        linestyle=":",
+        linewidth=0.35,
+        color=PLOT_GRID,
+        alpha=0.22
+    )
+
+    ax.xaxis.set_major_locator(
+        MaxNLocator(
+            nbins=8
+        )
+    )
+
+    ax.yaxis.set_major_locator(
+        MaxNLocator(
+            nbins=7
+        )
+    )
+
+    ax.minorticks_on()
+
+    ax.tick_params(
+        which="minor",
+        length=2.5,
+        width=0.5,
+        color=PLOT_SECONDARY
+    )
+
+
+# =============================================================================
+# TREATMENT MARKERS
+# =============================================================================
 
 def add_treatment_markers(
     ax,
     treatment_times,
-    alpha=0.30
+    alpha=0.35
 ):
-    """Add subtle treatment administration markers."""
 
     for t_admin in treatment_times:
 
@@ -899,9 +930,9 @@ def add_treatment_markers(
             t_admin,
             linestyle=":",
             linewidth=0.8,
-            color="0.55",
+            color=PLOT_TREATMENT,
             alpha=alpha,
-            zorder=0
+            zorder=1
         )
 
 
@@ -940,13 +971,16 @@ initial_burden_ml = st.sidebar.slider(
 )
 
 
+# IMPORTANT:
+# Alpha minimum changed from 0.01 to 0.001.
+
 alpha = st.sidebar.slider(
     "Alpha",
-    min_value=0.01,
+    min_value=0.001,
     max_value=0.50,
     value=DEFAULT_ALPHA,
-    step=0.01,
-    format="%.2f",
+    step=0.001,
+    format="%.3f",
     help=(
         "Effective alpha parameter used by the exploratory "
         "linear-quadratic radiation response model."
@@ -1027,7 +1061,7 @@ interval_days = st.sidebar.slider(
     "Cycle interval (days)",
     min_value=1,
     max_value=42,
-    value=int(DEFAULT_INTERVAL),
+    value=DEFAULT_INTERVAL,
     step=1
 )
 
@@ -1069,7 +1103,8 @@ simulation_days = max(
             1
         ) *
         interval_days
-    ) +
+    )
+    +
     FOLLOW_UP_DAYS
 )
 
@@ -1190,6 +1225,7 @@ st.subheader(
     "Key results"
 )
 
+
 col1, col2, col3, col4 = st.columns(
     4
 )
@@ -1246,6 +1282,7 @@ with col4:
 st.subheader(
     "Secondary metrics"
 )
+
 
 col1, col2, col3, col4 = st.columns(
     4
@@ -1321,13 +1358,16 @@ st.subheader(
 # =============================================================================
 
 fig1, ax1 = plt.subplots(
-    figsize=(9, 5)
+    figsize=(9, 5),
+    facecolor=PLOT_BACKGROUND
 )
+
 
 physical_rate_gy_h = (
     physical_dose_rate_gy_day /
     24.0
 )
+
 
 effective_rate_gy_h = (
     effective_dose_rate_gy_day /
@@ -1338,8 +1378,8 @@ effective_rate_gy_h = (
 ax1.plot(
     time_days,
     physical_rate_gy_h,
-    color="black",
-    linewidth=2.0,
+    color=PLOT_FOREGROUND,
+    linewidth=2.2,
     label="Physical dose rate",
     zorder=3
 )
@@ -1348,8 +1388,8 @@ ax1.plot(
 ax1.plot(
     time_days,
     effective_rate_gy_h,
-    color="black",
-    linewidth=1.7,
+    color=PLOT_SECONDARY,
+    linewidth=1.8,
     linestyle="--",
     label="Effective dose rate",
     zorder=3
@@ -1358,9 +1398,9 @@ ax1.plot(
 
 ax1.axhline(
     critical_dose_rate_gy_h,
-    color="black",
+    color=PLOT_SECONDARY,
     linestyle=":",
-    linewidth=1.4,
+    linewidth=1.5,
     label="Critical dose rate",
     zorder=2
 )
@@ -1373,25 +1413,35 @@ add_treatment_markers(
 
 
 ax1.set_xlabel(
-    "Time (days)"
+    "Time (days)",
+    color=PLOT_FOREGROUND
 )
+
 
 ax1.set_ylabel(
-    "Dose rate (Gy/h)"
+    "Dose rate (Gy/h)",
+    color=PLOT_FOREGROUND
 )
 
+
 ax1.set_title(
-    "Physical and effective dose rate"
+    "Physical and effective dose rate",
+    color=PLOT_FOREGROUND,
+    pad=12
 )
+
 
 style_axis(
     ax1
 )
 
+
 ax1.legend(
     frameon=False,
+    labelcolor=PLOT_FOREGROUND,
     loc="best"
 )
+
 
 fig1.tight_layout()
 
@@ -1401,15 +1451,16 @@ fig1.tight_layout()
 # =============================================================================
 
 fig2, ax2 = plt.subplots(
-    figsize=(9, 5)
+    figsize=(9, 5),
+    facecolor=PLOT_BACKGROUND
 )
 
 
 ax2.plot(
     time_days,
     total_burden,
-    color="black",
-    linewidth=2.3,
+    color=PLOT_FOREGROUND,
+    linewidth=2.4,
     label="Total burden",
     zorder=3
 )
@@ -1418,8 +1469,8 @@ ax2.plot(
 ax2.plot(
     time_days,
     sensitive_burden,
-    color="black",
-    linewidth=1.7,
+    color=PLOT_SECONDARY,
+    linewidth=1.8,
     linestyle="--",
     label="Sensitive",
     zorder=3
@@ -1429,8 +1480,8 @@ ax2.plot(
 ax2.plot(
     time_days,
     resistant_burden,
-    color="black",
-    linewidth=1.7,
+    color="#9E9E9E",
+    linewidth=1.8,
     linestyle=":",
     label="Resistant",
     zorder=3
@@ -1444,25 +1495,35 @@ add_treatment_markers(
 
 
 ax2.set_xlabel(
-    "Time (days)"
+    "Time (days)",
+    color=PLOT_FOREGROUND
 )
+
 
 ax2.set_ylabel(
-    "Tumour burden (mL)"
+    "Tumour burden (mL)",
+    color=PLOT_FOREGROUND
 )
 
+
 ax2.set_title(
-    "Tumour burden"
+    "Tumour burden",
+    color=PLOT_FOREGROUND,
+    pad=12
 )
+
 
 style_axis(
     ax2
 )
 
+
 ax2.legend(
     frameon=False,
+    labelcolor=PLOT_FOREGROUND,
     loc="best"
 )
+
 
 fig2.tight_layout()
 
@@ -1472,19 +1533,16 @@ fig2.tight_layout()
 # =============================================================================
 
 fig3, ax3 = plt.subplots(
-    figsize=(9, 5)
+    figsize=(9, 5),
+    facecolor=PLOT_BACKGROUND
 )
 
-
-# -------------------------------------------------------------------------
-# Absolute populations
-# -------------------------------------------------------------------------
 
 ax3.plot(
     time_days,
     sensitive_burden,
-    color="black",
-    linewidth=1.9,
+    color=PLOT_FOREGROUND,
+    linewidth=2.0,
     label="Sensitive tumour",
     zorder=3
 )
@@ -1493,18 +1551,13 @@ ax3.plot(
 ax3.plot(
     time_days,
     resistant_burden,
-    color="black",
-    linewidth=1.9,
+    color=PLOT_SECONDARY,
+    linewidth=2.0,
     linestyle="--",
     label="Resistant tumour",
     zorder=3
 )
 
-
-# -------------------------------------------------------------------------
-# Secondary axis:
-# residual resistant burden relative to INITIAL resistant burden
-# -------------------------------------------------------------------------
 
 ax3b = ax3.twinx()
 
@@ -1512,17 +1565,13 @@ ax3b = ax3.twinx()
 ax3b.plot(
     time_days,
     residual_resistant_burden_percent,
-    color="black",
-    linewidth=1.8,
+    color="#9E9E9E",
+    linewidth=1.9,
     linestyle=":",
     label="Residual resistant burden",
     zorder=3
 )
 
-
-# -------------------------------------------------------------------------
-# Treatment markers
-# -------------------------------------------------------------------------
 
 add_treatment_markers(
     ax3,
@@ -1531,33 +1580,38 @@ add_treatment_markers(
 )
 
 
-# -------------------------------------------------------------------------
-# Labels
-# -------------------------------------------------------------------------
-
 ax3.set_xlabel(
-    "Time (days)"
+    "Time (days)",
+    color=PLOT_FOREGROUND
 )
+
 
 ax3.set_ylabel(
-    "Tumour burden (mL)"
+    "Tumour burden (mL)",
+    color=PLOT_FOREGROUND
 )
+
 
 ax3b.set_ylabel(
-    "Residual resistant burden (% of initial)"
+    "Residual resistant burden (% of initial)",
+    color=PLOT_FOREGROUND
 )
+
 
 ax3.set_title(
-    "Sensitive and resistant tumour populations"
+    "Sensitive and resistant tumour populations",
+    color=PLOT_FOREGROUND,
+    pad=12
 )
 
-
-# -------------------------------------------------------------------------
-# Styling
-# -------------------------------------------------------------------------
 
 style_axis(
     ax3
+)
+
+
+ax3b.set_facecolor(
+    "none"
 )
 
 
@@ -1565,36 +1619,70 @@ ax3b.spines[
     "top"
 ].set_visible(False)
 
+
 ax3b.spines[
-    "left"
-].set_visible(False)
+    "right"
+].set_color(
+    PLOT_FOREGROUND
+)
+
+
+ax3b.spines[
+    "right"
+].set_linewidth(
+    0.8
+)
+
 
 ax3b.tick_params(
+    colors=PLOT_FOREGROUND,
     direction="out",
-    length=4,
+    length=4.5,
     width=0.8
 )
 
 
-# -------------------------------------------------------------------------
-# Combined legend
-# -------------------------------------------------------------------------
+ax3b.yaxis.set_major_locator(
+    MaxNLocator(
+        nbins=7
+    )
+)
+
+
+ax3b.minorticks_on()
+
+
+ax3b.tick_params(
+    which="minor",
+    length=2.5,
+    width=0.5,
+    color=PLOT_SECONDARY
+)
+
 
 lines1, labels1 = (
     ax3.get_legend_handles_labels()
 )
+
 
 lines2, labels2 = (
     ax3b.get_legend_handles_labels()
 )
 
 
-ax3.legend(
+legend3 = ax3.legend(
     lines1 + lines2,
     labels1 + labels2,
     frameon=False,
     loc="best"
 )
+
+
+for text in legend3.get_texts():
+
+    text.set_color(
+        PLOT_FOREGROUND
+    )
 
 
 fig3.tight_layout()
@@ -1605,15 +1693,16 @@ fig3.tight_layout()
 # =============================================================================
 
 fig4, ax4 = plt.subplots(
-    figsize=(9, 5)
+    figsize=(9, 5),
+    facecolor=PLOT_BACKGROUND
 )
 
 
 ax4.plot(
     time_days,
     tcp * 100.0,
-    color="black",
-    linewidth=2.2,
+    color=PLOT_FOREGROUND,
+    linewidth=2.3,
     label="TCP",
     zorder=3
 )
@@ -1621,10 +1710,9 @@ ax4.plot(
 
 ax4.axhline(
     50.0,
-    color="black",
+    color=PLOT_SECONDARY,
     linestyle="--",
-    linewidth=1.0,
-    alpha=0.65,
+    linewidth=1.1,
     label="50% TCP",
     zorder=2
 )
@@ -1637,30 +1725,41 @@ add_treatment_markers(
 
 
 ax4.set_xlabel(
-    "Time (days)"
+    "Time (days)",
+    color=PLOT_FOREGROUND
 )
 
+
 ax4.set_ylabel(
-    "TCP (%)"
+    "TCP (%)",
+    color=PLOT_FOREGROUND
 )
+
 
 ax4.set_ylim(
     0,
     100
 )
 
+
 ax4.set_title(
-    "Tumour control probability"
+    "Tumour control probability",
+    color=PLOT_FOREGROUND,
+    pad=12
 )
+
 
 style_axis(
     ax4
 )
 
+
 ax4.legend(
     frameon=False,
+    labelcolor=PLOT_FOREGROUND,
     loc="best"
 )
+
 
 fig4.tight_layout()
 
@@ -1808,6 +1907,16 @@ with st.expander(
         )
 
         st.write(
+            f"Alpha: "
+            f"{alpha:.3f} Gy⁻¹"
+        )
+
+        st.write(
+            f"Trep: "
+            f"{trep_days:.1f} days"
+        )
+
+        st.write(
             f"Initial sensitive fraction: "
             f"{sensitive_fraction * 100:.1f}%"
         )
@@ -1815,11 +1924,6 @@ with st.expander(
         st.write(
             f"Initial resistant fraction: "
             f"{(1.0 - sensitive_fraction) * 100:.1f}%"
-        )
-
-        st.write(
-            f"Trep: "
-            f"{trep_days:.1f} days"
         )
 
         st.write(
@@ -2039,7 +2143,7 @@ dynamics interact.
 
 
 # =============================================================================
-# EXPORT
+# EXPORT RESULTS
 # =============================================================================
 
 st.subheader(
@@ -2048,11 +2152,12 @@ st.subheader(
 
 
 # =============================================================================
-# CSV
+# CSV EXPORT
 # =============================================================================
 
 results_df = pd.DataFrame(
     {
+
         "Time_days":
             time_days,
 
@@ -2089,11 +2194,9 @@ results_df = pd.DataFrame(
         "Resistant_burden_mL":
             resistant_burden,
 
-        # Primary resistant-disease metric
         "Residual_resistant_burden_percent":
             residual_resistant_burden_percent,
 
-        # Secondary biological metric
         "Resistant_composition_fraction":
             resistant_composition_fraction,
 
@@ -2159,7 +2262,8 @@ st.download_button(
 # =============================================================================
 
 export_fig = plt.figure(
-    figsize=(16, 12)
+    figsize=(16, 12),
+    facecolor=PLOT_BACKGROUND
 )
 
 
@@ -2175,8 +2279,8 @@ export_ax1 = export_fig.add_subplot(
 export_ax1.plot(
     time_days,
     physical_rate_gy_h,
-    color="black",
-    linewidth=2.0,
+    color=PLOT_FOREGROUND,
+    linewidth=2.1,
     label="Physical dose rate"
 )
 
@@ -2184,8 +2288,8 @@ export_ax1.plot(
 export_ax1.plot(
     time_days,
     effective_rate_gy_h,
-    color="black",
-    linewidth=1.7,
+    color=PLOT_SECONDARY,
+    linewidth=1.8,
     linestyle="--",
     label="Effective dose rate"
 )
@@ -2193,7 +2297,7 @@ export_ax1.plot(
 
 export_ax1.axhline(
     critical_dose_rate_gy_h,
-    color="black",
+    color=PLOT_SECONDARY,
     linestyle=":",
     linewidth=1.4,
     label="Critical dose rate"
@@ -2207,23 +2311,29 @@ add_treatment_markers(
 
 
 export_ax1.set_title(
-    "Physical vs effective dose rate"
+    "Physical vs effective dose rate",
+    color=PLOT_FOREGROUND
 )
+
 
 export_ax1.set_xlabel(
     "Time (days)"
 )
 
+
 export_ax1.set_ylabel(
     "Dose rate (Gy/h)"
 )
+
 
 style_axis(
     export_ax1
 )
 
+
 export_ax1.legend(
-    frameon=False
+    frameon=False,
+    labelcolor=PLOT_FOREGROUND
 )
 
 
@@ -2239,7 +2349,7 @@ export_ax2 = export_fig.add_subplot(
 export_ax2.plot(
     time_days,
     total_burden,
-    color="black",
+    color=PLOT_FOREGROUND,
     linewidth=2.3,
     label="Total burden"
 )
@@ -2248,8 +2358,8 @@ export_ax2.plot(
 export_ax2.plot(
     time_days,
     sensitive_burden,
-    color="black",
-    linewidth=1.7,
+    color=PLOT_SECONDARY,
+    linewidth=1.8,
     linestyle="--",
     label="Sensitive"
 )
@@ -2258,8 +2368,8 @@ export_ax2.plot(
 export_ax2.plot(
     time_days,
     resistant_burden,
-    color="black",
-    linewidth=1.7,
+    color="#9E9E9E",
+    linewidth=1.8,
     linestyle=":",
     label="Resistant"
 )
@@ -2272,23 +2382,29 @@ add_treatment_markers(
 
 
 export_ax2.set_title(
-    "Tumour burden"
+    "Tumour burden",
+    color=PLOT_FOREGROUND
 )
+
 
 export_ax2.set_xlabel(
     "Time (days)"
 )
 
+
 export_ax2.set_ylabel(
     "Tumour burden (mL)"
 )
+
 
 style_axis(
     export_ax2
 )
 
+
 export_ax2.legend(
-    frameon=False
+    frameon=False,
+    labelcolor=PLOT_FOREGROUND
 )
 
 
@@ -2304,8 +2420,8 @@ export_ax3 = export_fig.add_subplot(
 export_ax3.plot(
     time_days,
     sensitive_burden,
-    color="black",
-    linewidth=1.9,
+    color=PLOT_FOREGROUND,
+    linewidth=2.0,
     label="Sensitive tumour"
 )
 
@@ -2313,27 +2429,10 @@ export_ax3.plot(
 export_ax3.plot(
     time_days,
     resistant_burden,
-    color="black",
-    linewidth=1.9,
+    color=PLOT_SECONDARY,
+    linewidth=2.0,
     linestyle="--",
     label="Resistant tumour"
-)
-
-
-export_ax3.set_title(
-    "Sensitive and resistant tumour populations"
-)
-
-export_ax3.set_xlabel(
-    "Time (days)"
-)
-
-export_ax3.set_ylabel(
-    "Tumour burden (mL)"
-)
-
-style_axis(
-    export_ax3
 )
 
 
@@ -2343,15 +2442,48 @@ export_ax3b = export_ax3.twinx()
 export_ax3b.plot(
     time_days,
     residual_resistant_burden_percent,
-    color="black",
-    linewidth=1.8,
+    color="#9E9E9E",
+    linewidth=1.9,
     linestyle=":",
     label="Residual resistant burden"
 )
 
 
+add_treatment_markers(
+    export_ax3,
+    treatment_times,
+    alpha=0.22
+)
+
+
+export_ax3.set_title(
+    "Sensitive and resistant tumour populations",
+    color=PLOT_FOREGROUND
+)
+
+
+export_ax3.set_xlabel(
+    "Time (days)"
+)
+
+
+export_ax3.set_ylabel(
+    "Tumour burden (mL)"
+)
+
+
 export_ax3b.set_ylabel(
     "Residual resistant burden (% of initial)"
+)
+
+
+style_axis(
+    export_ax3
+)
+
+
+export_ax3b.set_facecolor(
+    "none"
 )
 
 
@@ -2361,20 +2493,31 @@ export_ax3b.spines[
 
 
 export_ax3b.spines[
-    "left"
-].set_visible(False)
+    "right"
+].set_color(
+    PLOT_FOREGROUND
+)
 
 
 export_ax3b.tick_params(
+    colors=PLOT_FOREGROUND,
     direction="out",
     length=4,
     width=0.8
 )
 
 
+export_ax3b.yaxis.set_major_locator(
+    MaxNLocator(
+        nbins=7
+    )
+)
+
+
 lines_a, labels_a = (
     export_ax3.get_legend_handles_labels()
 )
+
 
 lines_b, labels_b = (
     export_ax3b.get_legend_handles_labels()
@@ -2385,14 +2528,7 @@ export_ax3.legend(
     lines_a + lines_b,
     labels_a + labels_b,
     frameon=False,
-    loc="best"
-)
-
-
-add_treatment_markers(
-    export_ax3,
-    treatment_times,
-    alpha=0.22
+    labelcolor=PLOT_FOREGROUND
 )
 
 
@@ -2408,7 +2544,7 @@ export_ax4 = export_fig.add_subplot(
 export_ax4.plot(
     time_days,
     tcp * 100.0,
-    color="black",
+    color=PLOT_FOREGROUND,
     linewidth=2.2,
     label="TCP"
 )
@@ -2416,10 +2552,9 @@ export_ax4.plot(
 
 export_ax4.axhline(
     50.0,
-    color="black",
+    color=PLOT_SECONDARY,
     linestyle="--",
     linewidth=1.0,
-    alpha=0.65,
     label="50% TCP"
 )
 
@@ -2431,36 +2566,46 @@ add_treatment_markers(
 
 
 export_ax4.set_title(
-    "Tumour control probability"
+    "Tumour control probability",
+    color=PLOT_FOREGROUND
 )
+
 
 export_ax4.set_xlabel(
     "Time (days)"
 )
 
+
 export_ax4.set_ylabel(
     "TCP (%)"
 )
+
 
 export_ax4.set_ylim(
     0,
     100
 )
 
+
 style_axis(
     export_ax4
 )
 
+
 export_ax4.legend(
-    frameon=False
+    frameon=False,
+    labelcolor=PLOT_FOREGROUND
 )
 
 
 # =============================================================================
-# EXPORT
+# FINALISE EXPORT
 # =============================================================================
 
-export_fig.tight_layout()
+export_fig.tight_layout(
+    pad=2.0
+)
+
 
 png_buffer = io.BytesIO()
 
@@ -2470,7 +2615,8 @@ export_fig.savefig(
     format="png",
     dpi=600,
     bbox_inches="tight",
-    facecolor="white"
+    facecolor=PLOT_BACKGROUND,
+    edgecolor=PLOT_BACKGROUND
 )
 
 
