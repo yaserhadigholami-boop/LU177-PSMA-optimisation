@@ -41,8 +41,7 @@ st.set_page_config(
 # =============================================================================
 
 OUTPUT_DIR = (
-    "/Users/yaser/Documents/Python_scripts/Playground/"
-    "Lu-177_PSMA/Final_code/Output"
+ "Output"
 )
 
 EXPLORER_OUTPUT_DIR = os.path.join(
