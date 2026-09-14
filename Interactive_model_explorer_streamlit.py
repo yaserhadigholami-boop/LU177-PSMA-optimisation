@@ -468,12 +468,12 @@ def calculate_summary(
         / 24.0
     )
 
-    cumulative_physical_dose = np.trapezoid(
+    cumulative_physical_dose = np.trapz(
         physical_dose_rate_gy_day,
         time_days
     )
 
-    cumulative_effective_dose = np.trapezoid(
+    cumulative_effective_dose = np.trapz(
         effective_dose_rate_gy_day,
         time_days
     )
