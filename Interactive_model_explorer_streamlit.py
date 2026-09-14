@@ -1501,7 +1501,7 @@ with col3:
     st.metric(
         "Time above critical rate",
         (
-            f"{summary['Time above critical dose rate (days)']:.3f} d"
+            f"{summary['Time above critical dose rate (days)']:.1f} d"
         )
     )
 
