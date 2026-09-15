@@ -43,7 +43,7 @@ FOLLOW_UP_DAYS = 60.0
 # =============================================================================
 
 DEFAULT_BURDEN = 234.0
-DEFAULT_ALPHA = 0.10
+DEFAULT_ALPHA = 0.0010
 DEFAULT_BETA_ALPHA = 0.10
 DEFAULT_TREP = 30.0
 DEFAULT_SENSITIVE_FRACTION = 0.75
@@ -52,14 +52,14 @@ DEFAULT_RESISTANT_RADIO_FACTOR = 0.25
 DEFAULT_REPOPULATION_KICKOFF = 5.0
 DEFAULT_ACTIVITY = 7.4
 DEFAULT_CYCLES = 4
-DEFAULT_INTERVAL = 7
+DEFAULT_INTERVAL = 3
 
 
 # =============================================================================
 # TCP PARAMETERS
 # =============================================================================
 
-INITIAL_TCP = 0.10
+INITIAL_TCP = 0.010
 INITIAL_CLONOGENIC_BURDEN = -np.log(INITIAL_TCP)
 
 
