@@ -966,7 +966,7 @@ initial_burden_ml = st.sidebar.slider(
 alpha = st.sidebar.slider(
     "Alpha",
     min_value=0.001,
-    max_value=0.50,
+    max_value=0.050,
     value=float(DEFAULT_ALPHA),
     step=0.001,
     format="%.3f",
