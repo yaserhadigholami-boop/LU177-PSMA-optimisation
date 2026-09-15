@@ -765,6 +765,7 @@ def key_result_caption(
 
 st.sidebar.title("Model controls")
 
+
 # =============================================================================
 # TUMOUR PARAMETERS
 # =============================================================================
@@ -789,7 +790,7 @@ alpha = st.sidebar.slider(
     "Alpha",
     min_value=0.001,
     max_value=0.50,
-    value=DEFAULT_ALPHA,
+    value=float(DEFAULT_ALPHA),
     step=0.001,
     format="%.3f",
     help=(
@@ -800,10 +801,10 @@ alpha = st.sidebar.slider(
 
 trep_days = st.sidebar.slider(
     "Trep",
-    min_value=10,
-    max_value=100,
-    value=DEFAULT_TREP,
-    step=1,
+    min_value=10.0,
+    max_value=100.0,
+    value=float(DEFAULT_TREP),
+    step=1.0,
     help="Tumour repopulation doubling time.",
 )
 
@@ -811,7 +812,7 @@ sensitive_fraction = st.sidebar.slider(
     "Sensitive fraction",
     min_value=0.50,
     max_value=0.95,
-    value=DEFAULT_SENSITIVE_FRACTION,
+    value=float(DEFAULT_SENSITIVE_FRACTION),
     step=0.01,
     format="%.2f",
     help=(
@@ -824,7 +825,7 @@ resistant_tk_multiplier = st.sidebar.slider(
     "Tk / Trep",
     min_value=1.20,
     max_value=1.80,
-    value=DEFAULT_RESISTANT_TK_MULTIPLIER,
+    value=float(DEFAULT_RESISTANT_TK_MULTIPLIER),
     step=0.01,
     format="%.2f",
     help=(
@@ -837,7 +838,7 @@ resistant_radio_factor = st.sidebar.slider(
     "Resistant radio factor",
     min_value=0.05,
     max_value=1.00,
-    value=DEFAULT_RESISTANT_RADIO_FACTOR,
+    value=float(DEFAULT_RESISTANT_RADIO_FACTOR),
     step=0.01,
     format="%.2f",
     help=(
@@ -848,10 +849,10 @@ resistant_radio_factor = st.sidebar.slider(
 
 repopulation_kickoff = st.sidebar.slider(
     "Repopulation kickoff",
-    min_value=3,
-    max_value=10,
-    value=DEFAULT_REPOPULATION_KICKOFF,
-    step=1,
+    min_value=3.0,
+    max_value=10.0,
+    value=float(DEFAULT_REPOPULATION_KICKOFF),
+    step=1.0,
     help=(
         "Day after which tumour repopulation is enabled."
     ),
@@ -870,7 +871,7 @@ activity_gbq = st.sidebar.slider(
     "Activity per cycle (GBq)",
     min_value=1.0,
     max_value=15.0,
-    value=DEFAULT_ACTIVITY,
+    value=float(DEFAULT_ACTIVITY),
     step=0.1,
     format="%.1f",
     help=(
@@ -882,7 +883,7 @@ n_cycles = st.sidebar.slider(
     "Number of cycles",
     min_value=1,
     max_value=8,
-    value=DEFAULT_CYCLES,
+    value=int(DEFAULT_CYCLES),
     step=1,
 )
 
@@ -890,15 +891,15 @@ interval_days = st.sidebar.slider(
     "Cycle interval (days)",
     min_value=1,
     max_value=42,
-    value=DEFAULT_INTERVAL,
+    value=int(DEFAULT_INTERVAL),
     step=1,
 )
 
 tumour_uptake_percent = st.sidebar.slider(
     "Total tumour uptake (%)",
-    min_value=TUMOUR_UPTAKE_MIN_PERCENT,
-    max_value=TUMOUR_UPTAKE_MAX_PERCENT,
-    value=DEFAULT_TUMOUR_UPTAKE_PERCENT,
+    min_value=float(TUMOUR_UPTAKE_MIN_PERCENT),
+    max_value=float(TUMOUR_UPTAKE_MAX_PERCENT),
+    value=float(DEFAULT_TUMOUR_UPTAKE_PERCENT),
     step=0.1,
     format="%.1f",
     help=(
@@ -911,14 +912,13 @@ gamma = st.sidebar.slider(
     "Effectiveness gamma",
     min_value=0.25,
     max_value=2.00,
-    value=DEFAULT_GAMMA,
+    value=float(DEFAULT_GAMMA),
     step=0.05,
     format="%.2f",
     help=(
         "Controls the dose-rate effectiveness relationship."
     ),
 )
-
 
 # =============================================================================
 # SIMULATION TIME
