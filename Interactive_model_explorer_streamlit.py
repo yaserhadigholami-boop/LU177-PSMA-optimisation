@@ -775,10 +775,10 @@ st.sidebar.markdown(
 
 initial_burden_ml = st.sidebar.slider(
     "Initial metastatic burden (mL)",
-    min_value=10,
-    max_value=1500,
-    value=DEFAULT_BURDEN,
-    step=1,
+    min_value=10.0,
+    max_value=1500.0,
+    value=float(DEFAULT_BURDEN),
+    step=1.0,
     help=(
         "Total metastatic tumour burden represented "
         "as an aggregate volume."
