@@ -53,7 +53,6 @@ DEFAULT_REPOPULATION_KICKOFF = 5.0
 DEFAULT_ACTIVITY = 7.4
 DEFAULT_CYCLES = 4
 DEFAULT_INTERVAL = 7
-DEFAULT_GAMMA = 1.0
 
 
 # =============================================================================
@@ -260,12 +259,26 @@ def calculate_critical_dose_rate(
 
 # =============================================================================
 # EFFECTIVE DOSE RATE
+#
+# No independent gamma parameter is used.
+#
+# Effectiveness is determined directly from the ratio of the physical
+# dose rate to the critical dose rate:
+#
+#     ratio = physical dose rate / critical dose rate
+#
+#     effectiveness = min(1, ratio)
+#
+# Therefore:
+#
+#     effective dose rate =
+#         physical dose rate × min(1, ratio)
+#
 # =============================================================================
 
 def calculate_effective_dose_rate(
     physical_dose_rate_gy_day,
-    critical_dose_rate_gy_h,
-    gamma
+    critical_dose_rate_gy_h
 ):
 
     critical_rate_gy_day = (
@@ -284,12 +297,9 @@ def calculate_effective_dose_rate(
 
     effectiveness = np.minimum(
         1.0,
-        np.power(
-            np.maximum(
-                ratio,
-                0.0
-            ),
-            gamma
+        np.maximum(
+            ratio,
+            0.0
         )
     )
 
@@ -664,7 +674,9 @@ def calculate_summary(
 
     final_burden = total_burden[-1]
 
-    maximum_tcp = np.max(tcp)
+    maximum_tcp = np.max(
+        tcp
+    )
 
     maximum_tcp_percent = (
         maximum_tcp *
@@ -861,7 +873,11 @@ def add_treatment_markers(
 
 
 # =============================================================================
-# KEY RESULT HELPER
+# KEY RESULT HELPERS
+#
+# IMPORTANT:
+# These are intentionally kept as direct Streamlit markdown calls.
+# This preserves the presentation of the older version that rendered correctly.
 # =============================================================================
 
 def key_result_status(
@@ -883,17 +899,17 @@ def key_result_status(
 
     st.markdown(
         f"""
-        <div style="
-            color: {colour};
-            font-size: 0.82rem;
-            font-weight: 600;
-            margin-top: -0.25rem;
-            margin-bottom: 0.10rem;
-            line-height: 1.25;
-        ">
-            {text}
-        </div>
-        """,
+<div style="
+    color: {colour};
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin-top: -0.25rem;
+    margin-bottom: 0.10rem;
+    line-height: 1.25;
+">
+{text}
+</div>
+""",
         unsafe_allow_html=True
     )
 
@@ -902,15 +918,15 @@ def key_result_caption(text):
 
     st.markdown(
         f"""
-        <div style="
-            color: #AFAFAF;
-            font-size: 0.72rem;
-            margin-top: 0.05rem;
-            line-height: 1.25;
-        ">
-            {text}
-        </div>
-        """,
+<div style="
+    color: #AFAFAF;
+    font-size: 0.72rem;
+    margin-top: 0.05rem;
+    line-height: 1.25;
+">
+{text}
+</div>
+""",
         unsafe_allow_html=True
     )
 
@@ -924,13 +940,26 @@ st.sidebar.header(
 )
 
 
+# =============================================================================
+# TUMOUR PARAMETERS
+# =============================================================================
+
+st.sidebar.markdown(
+    "### Tumour parameters"
+)
+
+
 initial_burden_ml = st.sidebar.slider(
     "Initial metastatic burden (mL)",
     min_value=10.0,
     max_value=1500.0,
-    value=DEFAULT_BURDEN,
+    value=float(DEFAULT_BURDEN),
     step=1.0,
-    format="%.0f"
+    format="%.0f",
+    help=(
+        "Total aggregate metastatic tumour burden across all "
+        "metastatic sites."
+    )
 )
 
 
@@ -938,7 +967,7 @@ alpha = st.sidebar.slider(
     "Alpha",
     min_value=0.001,
     max_value=0.50,
-    value=DEFAULT_ALPHA,
+    value=float(DEFAULT_ALPHA),
     step=0.001,
     format="%.3f",
     help=(
@@ -952,7 +981,7 @@ trep_days = st.sidebar.slider(
     "Trep (days)",
     min_value=10.0,
     max_value=100.0,
-    value=DEFAULT_TREP,
+    value=float(DEFAULT_TREP),
     step=1.0,
     format="%.0f"
 )
@@ -962,7 +991,7 @@ sensitive_fraction = st.sidebar.slider(
     "Sensitive fraction",
     min_value=0.50,
     max_value=0.95,
-    value=DEFAULT_SENSITIVE_FRACTION,
+    value=float(DEFAULT_SENSITIVE_FRACTION),
     step=0.01,
     format="%.2f"
 )
@@ -972,7 +1001,7 @@ resistant_tk_multiplier = st.sidebar.slider(
     "Tk / Trep",
     min_value=1.20,
     max_value=1.80,
-    value=DEFAULT_RESISTANT_TK_MULTIPLIER,
+    value=float(DEFAULT_RESISTANT_TK_MULTIPLIER),
     step=0.01,
     format="%.2f"
 )
@@ -982,9 +1011,14 @@ resistant_radio_factor = st.sidebar.slider(
     "Resistant radio factor",
     min_value=0.05,
     max_value=1.00,
-    value=DEFAULT_RESISTANT_RADIO_FACTOR,
+    value=float(DEFAULT_RESISTANT_RADIO_FACTOR),
     step=0.01,
-    format="%.2f"
+    format="%.2f",
+    help=(
+        "Relative radiosensitivity of the resistant population "
+        "compared with the sensitive population. Lower values "
+        "represent greater radioresistance."
+    )
 )
 
 
@@ -992,9 +1026,18 @@ repopulation_kickoff = st.sidebar.slider(
     "Repopulation kickoff (days)",
     min_value=3.0,
     max_value=10.0,
-    value=DEFAULT_REPOPULATION_KICKOFF,
+    value=float(DEFAULT_REPOPULATION_KICKOFF),
     step=0.5,
     format="%.1f"
+)
+
+
+# =============================================================================
+# TREATMENT PARAMETERS
+# =============================================================================
+
+st.sidebar.markdown(
+    "### Treatment parameters"
 )
 
 
@@ -1002,7 +1045,7 @@ activity_gbq = st.sidebar.slider(
     "Activity / cycle (GBq)",
     min_value=1.0,
     max_value=15.0,
-    value=DEFAULT_ACTIVITY,
+    value=float(DEFAULT_ACTIVITY),
     step=0.1,
     format="%.1f"
 )
@@ -1012,7 +1055,7 @@ n_cycles = st.sidebar.slider(
     "Number of cycles",
     min_value=1,
     max_value=8,
-    value=DEFAULT_CYCLES,
+    value=int(DEFAULT_CYCLES),
     step=1
 )
 
@@ -1021,26 +1064,16 @@ interval_days = st.sidebar.slider(
     "Cycle interval (days)",
     min_value=1,
     max_value=42,
-    value=DEFAULT_INTERVAL,
+    value=int(DEFAULT_INTERVAL),
     step=1
-)
-
-
-gamma = st.sidebar.slider(
-    "Effectiveness gamma",
-    min_value=0.25,
-    max_value=2.00,
-    value=DEFAULT_GAMMA,
-    step=0.05,
-    format="%.2f"
 )
 
 
 tumour_uptake_percent = st.sidebar.slider(
     "Total tumour uptake (%)",
-    min_value=TUMOUR_UPTAKE_MIN_PERCENT,
-    max_value=TUMOUR_UPTAKE_MAX_PERCENT,
-    value=DEFAULT_TUMOUR_UPTAKE_PERCENT,
+    min_value=float(TUMOUR_UPTAKE_MIN_PERCENT),
+    max_value=float(TUMOUR_UPTAKE_MAX_PERCENT),
+    value=float(DEFAULT_TUMOUR_UPTAKE_PERCENT),
     step=0.1,
     format="%.1f",
     help=(
@@ -1108,8 +1141,7 @@ critical_dose_rate_gy_h = calculate_critical_dose_rate(
     effective_dose_rate_gy_day
 ) = calculate_effective_dose_rate(
     physical_dose_rate_gy_day,
-    critical_dose_rate_gy_h,
-    gamma
+    critical_dose_rate_gy_h
 )
 
 
@@ -1225,16 +1257,16 @@ with col1:
 
     st.markdown(
         f"""
-        <div style="
-            font-size: 1.55rem;
-            font-weight: 600;
-            line-height: 1.15;
-            color: #F2F2F2;
-            margin-bottom: 0.15rem;
-        ">
-            {minimum_burden:.1f} mL
-        </div>
-        """,
+<div style="
+    font-size: 1.55rem;
+    font-weight: 600;
+    line-height: 1.15;
+    color: #F2F2F2;
+    margin-bottom: 0.15rem;
+">
+    {minimum_burden:.1f} mL
+</div>
+""",
         unsafe_allow_html=True
     )
 
@@ -1292,16 +1324,16 @@ with col2:
 
     st.markdown(
         f"""
-        <div style="
-            font-size: 1.55rem;
-            font-weight: 600;
-            line-height: 1.15;
-            color: #F2F2F2;
-            margin-bottom: 0.15rem;
-        ">
-            {maximum_tcp_percent:.1f}%
-        </div>
-        """,
+<div style="
+    font-size: 1.55rem;
+    font-weight: 600;
+    line-height: 1.15;
+    color: #F2F2F2;
+    margin-bottom: 0.15rem;
+">
+    {maximum_tcp_percent:.1f}%
+</div>
+""",
         unsafe_allow_html=True
     )
 
@@ -1368,16 +1400,16 @@ with col3:
 
     st.markdown(
         f"""
-        <div style="
-            font-size: 1.55rem;
-            font-weight: 600;
-            line-height: 1.15;
-            color: #F2F2F2;
-            margin-bottom: 0.15rem;
-        ">
-            {final_residual_resistant_percent:.1f}%
-        </div>
-        """,
+<div style="
+    font-size: 1.55rem;
+    font-weight: 600;
+    line-height: 1.15;
+    color: #F2F2F2;
+    margin-bottom: 0.15rem;
+">
+    {final_residual_resistant_percent:.1f}%
+</div>
+""",
         unsafe_allow_html=True
     )
 
@@ -1430,16 +1462,16 @@ with col4:
 
     st.markdown(
         f"""
-        <div style="
-            font-size: 1.55rem;
-            font-weight: 600;
-            line-height: 1.15;
-            color: #F2F2F2;
-            margin-bottom: 0.15rem;
-        ">
-            {cumulative_physical_dose:.2f} Gy
-        </div>
-        """,
+<div style="
+    font-size: 1.55rem;
+    font-weight: 600;
+    line-height: 1.15;
+    color: #F2F2F2;
+    margin-bottom: 0.15rem;
+">
+    {cumulative_physical_dose:.2f} Gy
+</div>
+""",
         unsafe_allow_html=True
     )
 
@@ -1521,7 +1553,7 @@ with col4:
     )
 
     st.caption(
-        f"Gamma = {gamma:.2f}"
+        "Dose-rate effectiveness based on R / Rcrit"
     )
 
 
@@ -2196,6 +2228,17 @@ The critical dose rate is calculated as:
 **Rcrit = ln(2) / (alpha × Trep)**
 
 where Trep is converted to hours.
+
+### Dose-rate effectiveness
+
+The effective dose rate is determined directly from the ratio of the
+physical dose rate to the critical dose rate.
+
+When the physical dose rate is below the critical dose rate, the
+effective dose is reduced proportionally.
+
+When the physical dose rate reaches or exceeds the critical dose
+rate, the full physical dose rate is used.
 
 ### Radiation response
 
