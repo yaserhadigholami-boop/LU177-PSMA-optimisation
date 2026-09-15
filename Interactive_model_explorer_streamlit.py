@@ -4,9 +4,6 @@
 # ============================================================
 
 import io
-import os
-from textwrap import dedent
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -49,7 +46,6 @@ DEFAULT_REPOPULATION_KICKOFF = 5.0
 DEFAULT_ACTIVITY = 7.4
 DEFAULT_N_CYCLES = 4
 DEFAULT_INTERVAL_DAYS = 7
-DEFAULT_TUMOUR_UPTAKE_PERCENT = 1.0
 
 INITIAL_TCP = 0.10
 INITIAL_CLONOGENIC_BURDEN = -np.log(INITIAL_TCP)
@@ -76,14 +72,27 @@ def integrate_trapezoid(y, x):
     return np.trapz(y, x)
 
 
-def key_result_status(text, status="neutral"):
+# ============================================================
+# KEY RESULT RENDERING
+# ============================================================
+
+def render_key_metric(
+    title,
+    value,
+    status_text="",
+    status="neutral",
+    caption="",
+):
     """
-    Render the small status badge below a key result.
+    Render one complete key-result card as a single HTML block.
 
     IMPORTANT:
-    dedent().strip() prevents Streamlit Markdown from interpreting
-    the indented HTML as literal/preformatted code.
+    Do not construct nested HTML fragments here.
+    Streamlit's Markdown parser can interpret nested/generated
+    fragments as code blocks. Keeping the entire card as one
+    continuous HTML block avoids that problem.
     """
+
     if status == "positive":
         colour = "#166534"
         background = "#DCFCE7"
@@ -96,66 +105,23 @@ def key_result_status(text, status="neutral"):
         colour = "#4B5563"
         background = "#F3F4F6"
 
-    return dedent(
-        f"""
-        <span style="
-            display:inline-block;
-            padding:3px 8px;
-            border-radius:999px;
-            font-size:0.75rem;
-            font-weight:600;
-            color:{colour};
-            background:{background};
-            margin-top:3px;
-        ">{text}</span>
-        """
-    ).strip()
+    html = f"""
+<div class="metric-card">
+    <div class="metric-title">{title}</div>
 
+    <div class="metric-value">
+        {value}
+    </div>
 
-def key_result_caption(text):
-    """
-    Render the small explanatory caption below a key result.
-    """
-    return dedent(
-        f"""
-        <div style="
-            font-size:0.72rem;
-            color:#6B7280;
-            margin-top:5px;
-            line-height:1.25;
-        ">{text}</div>
-        """
-    ).strip()
+    <span style="display:inline-block; padding:3px 8px; border-radius:999px; font-size:0.75rem; font-weight:600; color:{colour}; background:{background}; margin-top:3px;">
+        {status_text}
+    </span>
 
-
-def render_key_metric(
-    title,
-    value,
-    status_text="",
-    status="neutral",
-    caption="",
-):
-    """
-    Render a primary key-result metric.
-
-    The HTML is explicitly dedented before being passed to
-    Streamlit so it is rendered as HTML rather than code.
-    """
-    html = dedent(
-        f"""
-        <div class="metric-card">
-            <div class="metric-title">{title}</div>
-
-            <div class="metric-value">
-                {value}
-            </div>
-
-            {key_result_status(status_text, status)}
-
-            {key_result_caption(caption)}
-        </div>
-        """
-    ).strip()
+    <div style="font-size:0.72rem; color:#6B7280; margin-top:5px; line-height:1.25;">
+        {caption}
+    </div>
+</div>
+"""
 
     st.markdown(
         html,
@@ -163,34 +129,34 @@ def render_key_metric(
     )
 
 
+# ============================================================
+# SECONDARY METRIC RENDERING
+# ============================================================
+
 def render_secondary_metric(
     title,
     value,
     caption="",
 ):
     """
-    Render a secondary metric.
-
-    Again, dedent().strip() ensures the HTML is interpreted
-    correctly by Streamlit.
+    Render one complete secondary metric as a single HTML block.
     """
-    html = dedent(
-        f"""
-        <div class="metric-card-secondary">
-            <div class="metric-title-secondary">
-                {title}
-            </div>
 
-            <div class="metric-value-secondary">
-                {value}
-            </div>
+    html = f"""
+<div class="metric-card-secondary">
+    <div class="metric-title-secondary">
+        {title}
+    </div>
 
-            <div class="metric-caption">
-                {caption}
-            </div>
-        </div>
-        """
-    ).strip()
+    <div class="metric-value-secondary">
+        {value}
+    </div>
+
+    <div class="metric-caption">
+        {caption}
+    </div>
+</div>
+"""
 
     st.markdown(
         html,
@@ -204,98 +170,98 @@ def render_secondary_metric(
 
 st.markdown(
     """
-    <style>
+<style>
 
-    .main-title {
-        font-size: 2.1rem;
-        font-weight: 700;
-        margin-bottom: 0.15rem;
-    }
+.main-title {
+    font-size: 2.1rem;
+    font-weight: 700;
+    margin-bottom: 0.15rem;
+}
 
-    .main-subtitle {
-        color: #6B7280;
-        font-size: 0.95rem;
-        margin-bottom: 1.2rem;
-    }
+.main-subtitle {
+    color: #6B7280;
+    font-size: 0.95rem;
+    margin-bottom: 1.2rem;
+}
 
-    .section-header {
-        font-size: 1.25rem;
-        font-weight: 700;
-        margin-top: 1.0rem;
-        margin-bottom: 0.65rem;
-    }
+.section-header {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-top: 1.0rem;
+    margin-bottom: 0.65rem;
+}
 
-    .metric-card {
-        background: #FFFFFF;
-        border: 1px solid #E5E7EB;
-        border-radius: 12px;
-        padding: 14px 16px 13px 16px;
-        min-height: 125px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-    }
+.metric-card {
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 14px 16px 13px 16px;
+    min-height: 125px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
 
-    .metric-title {
-        font-size: 0.80rem;
-        font-weight: 600;
-        color: #6B7280;
-        margin-bottom: 3px;
-    }
+.metric-title {
+    font-size: 0.80rem;
+    font-weight: 600;
+    color: #6B7280;
+    margin-bottom: 3px;
+}
 
-    .metric-value {
-        font-size: 1.55rem;
-        line-height: 1.15;
-        font-weight: 700;
-        color: #111827;
-        margin-bottom: 4px;
-    }
+.metric-value {
+    font-size: 1.55rem;
+    line-height: 1.15;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 4px;
+}
 
-    .metric-card-secondary {
-        background: #FFFDF4;
-        border: 1px solid #F2C94C;
-        border-left: 4px solid #F2C94C;
-        border-radius: 10px;
-        padding: 11px 14px 10px 14px;
-        min-height: 100px;
-    }
+.metric-card-secondary {
+    background: #FFFDF4;
+    border: 1px solid #F2C94C;
+    border-left: 4px solid #F2C94C;
+    border-radius: 10px;
+    padding: 11px 14px 10px 14px;
+    min-height: 100px;
+}
 
-    .metric-title-secondary {
-        font-size: 0.77rem;
-        font-weight: 600;
-        color: #A16207;
-        margin-bottom: 3px;
-    }
+.metric-title-secondary {
+    font-size: 0.77rem;
+    font-weight: 600;
+    color: #A16207;
+    margin-bottom: 3px;
+}
 
-    .metric-value-secondary {
-        font-size: 1.25rem;
-        line-height: 1.15;
-        font-weight: 700;
-        color: #92400E;
-        margin-bottom: 3px;
-    }
+.metric-value-secondary {
+    font-size: 1.25rem;
+    line-height: 1.15;
+    font-weight: 700;
+    color: #92400E;
+    margin-bottom: 3px;
+}
 
-    .metric-caption {
-        font-size: 0.70rem;
-        color: #78716C;
-        line-height: 1.2;
-    }
+.metric-caption {
+    font-size: 0.70rem;
+    color: #78716C;
+    line-height: 1.2;
+}
 
-    .plot-container {
-        margin-top: 0.2rem;
-    }
+.plot-container {
+    margin-top: 0.2rem;
+}
 
-    .sidebar-section {
-        font-size: 1.0rem;
-        font-weight: 700;
-        margin-top: 0.8rem;
-        margin-bottom: 0.3rem;
-    }
+.sidebar-section {
+    font-size: 1.0rem;
+    font-weight: 700;
+    margin-top: 0.8rem;
+    margin-bottom: 0.3rem;
+}
 
-    div[data-testid="stDownloadButton"] button {
-        width: 100%;
-    }
+div[data-testid="stDownloadButton"] button {
+    width: 100%;
+}
 
-    </style>
-    """,
+</style>
+""",
     unsafe_allow_html=True,
 )
 
@@ -320,11 +286,8 @@ def calculate_model(
     """
     Run the complete tumour-dynamics model.
 
-    The model treats initial_burden_ml as the total metastatic
-    tumour burden rather than a single solid tumour.
-
-    Tumour uptake is represented as a phenomenological percentage
-    of administered activity associated with the total tumour burden.
+    Initial tumour burden represents the total metastatic
+    tumour burden as an aggregate volume.
     """
 
     # --------------------------------------------------------
@@ -386,7 +349,7 @@ def calculate_model(
     )
 
     # --------------------------------------------------------
-    # Physical dose rate from all administrations
+    # Physical dose rate
     # --------------------------------------------------------
 
     physical_dose_rate_gy_day = np.zeros(
@@ -435,13 +398,9 @@ def calculate_model(
     # --------------------------------------------------------
     # Effective dose rate
     #
-    # Direct dose-rate relationship:
+    # No gamma slider.
     #
-    #   ratio = physical rate / critical rate
-    #   effectiveness = min(1, ratio)
-    #   effective rate = physical rate * effectiveness
-    #
-    # No independent gamma slider is used.
+    # effectiveness = min(1, physical rate / critical rate)
     # --------------------------------------------------------
 
     dose_rate_ratio = np.divide(
@@ -504,7 +463,7 @@ def calculate_model(
     )
 
     # --------------------------------------------------------
-    # Initial tumour populations
+    # Initial populations
     # --------------------------------------------------------
 
     initial_sensitive_burden = (
@@ -581,7 +540,7 @@ def calculate_model(
             )
 
         # ----------------------------------------------------
-        # Radiation dose during interval
+        # Radiation dose
         # ----------------------------------------------------
 
         dose_interval_gy = (
@@ -641,8 +600,7 @@ def calculate_model(
     )
 
     # --------------------------------------------------------
-    # Residual resistant burden relative to initial
-    # resistant burden
+    # Residual resistant burden
     # --------------------------------------------------------
 
     residual_resistant_burden_percent = (
@@ -657,8 +615,6 @@ def calculate_model(
 
     # --------------------------------------------------------
     # TCP
-    #
-    # Normalised exploratory TCP formulation.
     # --------------------------------------------------------
 
     relative_burden = np.divide(
@@ -684,7 +640,7 @@ def calculate_model(
     )
 
     # --------------------------------------------------------
-    # Summary
+    # Summary calculations
     # --------------------------------------------------------
 
     cumulative_physical_dose_gy = integrate_trapezoid(
@@ -707,20 +663,22 @@ def calculate_model(
         * DT_DAYS
     )
 
-    # Longest continuous interval above critical
     longest_continuous_days = 0.0
     current_duration = 0.0
 
     for flag in above_critical:
 
         if flag:
+
             current_duration += DT_DAYS
+
             longest_continuous_days = max(
                 longest_continuous_days,
                 current_duration,
             )
 
         else:
+
             current_duration = 0.0
 
     peak_index = int(
@@ -742,7 +700,9 @@ def calculate_model(
     )
 
     minimum_burden_index = int(
-        np.argmin(total_burden)
+        np.argmin(
+            total_burden
+        )
     )
 
     minimum_burden_ml = (
@@ -758,7 +718,9 @@ def calculate_model(
     )
 
     maximum_tcp_index = int(
-        np.argmax(tcp)
+        np.argmax(
+            tcp
+        )
     )
 
     maximum_tcp = (
@@ -778,8 +740,11 @@ def calculate_model(
     )
 
     return {
-        "time_days": time_days,
-        "administration_times": administration_times,
+        "time_days":
+            time_days,
+
+        "administration_times":
+            administration_times,
 
         "physical_dose_rate_gy_day":
             physical_dose_rate_gy_day,
@@ -886,10 +851,11 @@ def calculate_model(
 # PLOT HELPERS
 # ============================================================
 
-def add_treatment_markers(ax, administration_times):
-    """
-    Add treatment administration markers.
-    """
+def add_treatment_markers(
+    ax,
+    administration_times,
+):
+
     for t in administration_times:
 
         ax.axvline(
@@ -902,6 +868,7 @@ def add_treatment_markers(ax, administration_times):
 
 
 def make_dose_rate_plot(results):
+
     fig, ax = plt.subplots(
         figsize=(8, 5),
     )
@@ -961,6 +928,7 @@ def make_dose_rate_plot(results):
 
 
 def make_burden_plot(results):
+
     fig, ax = plt.subplots(
         figsize=(8, 5),
     )
@@ -1005,6 +973,7 @@ def make_burden_plot(results):
 
 
 def make_population_plot(results):
+
     fig, ax1 = plt.subplots(
         figsize=(8, 5),
     )
@@ -1062,8 +1031,13 @@ def make_population_plot(results):
         results["administration_times"],
     )
 
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
+    lines1, labels1 = (
+        ax1.get_legend_handles_labels()
+    )
+
+    lines2, labels2 = (
+        ax2.get_legend_handles_labels()
+    )
 
     ax1.legend(
         lines1 + lines2,
@@ -1078,6 +1052,7 @@ def make_population_plot(results):
 
 
 def make_tcp_plot(results):
+
     fig, ax = plt.subplots(
         figsize=(8, 5),
     )
@@ -1138,9 +1113,6 @@ def make_tcp_plot(results):
 # ============================================================
 
 def create_csv(results):
-    """
-    Create a CSV containing the complete model trajectory.
-    """
 
     df = pd.DataFrame(
         {
@@ -1226,9 +1198,6 @@ def create_csv(results):
 # ============================================================
 
 def create_png_export(results):
-    """
-    Create a 2x2, 600 dpi PNG containing all model plots.
-    """
 
     fig, axes = plt.subplots(
         2,
@@ -1443,16 +1412,16 @@ def create_png_export(results):
 
 st.markdown(
     """
-    <div class="main-title">
-        Lu-177 PSMA Optimisation
-    </div>
+<div class="main-title">
+    Lu-177 PSMA Optimisation
+</div>
 
-    <div class="main-subtitle">
-        Interactive exploration of dose-rate effects,
-        tumour dynamics, resistant disease and tumour
-        control probability
-    </div>
-    """,
+<div class="main-subtitle">
+    Interactive exploration of dose-rate effects,
+    tumour dynamics, resistant disease and tumour
+    control probability
+</div>
+""",
     unsafe_allow_html=True,
 )
 
@@ -1660,13 +1629,18 @@ with col1:
     ) * 100.0
 
     if burden_reduction > 0:
+
         burden_status = "positive"
+
         burden_text = (
             f"↓ {burden_reduction:.1f}% "
             f"from baseline"
         )
+
     else:
+
         burden_status = "negative"
+
         burden_text = (
             f"↑ {abs(burden_reduction):.1f}% "
             f"from baseline"
@@ -1701,13 +1675,18 @@ with col2:
     )
 
     if tcp_change_pp > 0:
+
         tcp_status = "positive"
+
         tcp_text = (
             f"↑ {tcp_change_pp:.1f} "
             f"percentage points"
         )
+
     else:
+
         tcp_status = "negative"
+
         tcp_text = (
             f"↓ {abs(tcp_change_pp):.1f} "
             f"percentage points"
@@ -1743,13 +1722,18 @@ with col3:
     )
 
     if resistant_reduction > 0:
+
         resistant_status = "positive"
+
         resistant_text = (
             f"↓ {resistant_reduction:.1f}% "
             f"from initial resistant burden"
         )
+
     else:
+
         resistant_status = "negative"
+
         resistant_text = (
             f"↑ {abs(resistant_reduction):.1f}% "
             f"from initial resistant burden"
@@ -2055,9 +2039,6 @@ with st.expander(
 
         The resistant radio factor controls relative radiation
         sensitivity. Tk/Trep controls relative repopulation kinetics.
-
-        A low resistant radio factor means the resistant population is
-        substantially harder to eliminate.
 
         **Critical dose rate**
 
