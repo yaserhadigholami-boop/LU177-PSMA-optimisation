@@ -1,39 +1,46 @@
-# ============================================================
-# LU-177 PSMA OPTIMISATION — INTERACTIVE MODEL EXPLORER
-# Streamlit version
-# ============================================================
-
 import io
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+
 import streamlit as st
 
 
-# ============================================================
+# =============================================================================
 # PAGE CONFIGURATION
-# ============================================================
+# =============================================================================
 
 st.set_page_config(
-    page_title="Lu-177 PSMA Optimisation",
+    page_title="Lu-177 PSMA Optimisation Model",
     page_icon="🧬",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
 
-# ============================================================
+# =============================================================================
 # MODEL CONSTANTS
-# ============================================================
+# =============================================================================
 
 LU177_HALF_LIFE_DAYS = 6.647
+LU177_LAMBDA_PER_DAY = np.log(2.0) / LU177_HALF_LIFE_DAYS
+
 DOSE_PER_GBQ_GY = 0.50
 
 REFERENCE_METASTATIC_BURDEN_ML = 234.0
-DEFAULT_TUMOUR_UPTAKE_PERCENT = 1.0
 
+DEFAULT_TUMOUR_UPTAKE_PERCENT = 1.0
 TUMOUR_UPTAKE_MIN_PERCENT = 0.1
 TUMOUR_UPTAKE_MAX_PERCENT = 10.0
+
+DT_DAYS = 0.05
+FOLLOW_UP_DAYS = 60.0
+
+
+# =============================================================================
+# DEFAULT PARAMETERS
+# =============================================================================
 
 DEFAULT_BURDEN = 234.0
 DEFAULT_ALPHA = 0.10
@@ -44,1836 +51,1888 @@ DEFAULT_RESISTANT_TK_MULTIPLIER = 1.50
 DEFAULT_RESISTANT_RADIO_FACTOR = 0.25
 DEFAULT_REPOPULATION_KICKOFF = 5.0
 DEFAULT_ACTIVITY = 7.4
-DEFAULT_N_CYCLES = 4
-DEFAULT_INTERVAL_DAYS = 7
+DEFAULT_CYCLES = 4
+DEFAULT_INTERVAL = 7
+DEFAULT_GAMMA = 1.0
+
+
+# =============================================================================
+# TCP PARAMETERS
+# =============================================================================
 
 INITIAL_TCP = 0.10
 INITIAL_CLONOGENIC_BURDEN = -np.log(INITIAL_TCP)
 
-DT_DAYS = 0.05
-SIMULATION_DAYS = 180.0
 
+# =============================================================================
+# PROFESSIONAL PLOT COLOURS
+# =============================================================================
+
+PLOT_BACKGROUND = "#000000"
+PLOT_TEXT = "#F2F2F2"
+PLOT_GRID = "#666666"
 PLOT_TREATMENT = "#A0A0A0"
-COLOR_TREATMENT = "#A0A0A0"
+
+COLOR_BLUE = "#4C9BE8"
+COLOR_ORANGE = "#FF8C42"
+COLOR_GREEN = "#5CC85C"
+COLOR_RED = "#E85C5C"
+COLOR_PURPLE = "#B57EDC"
+COLOR_CYAN = "#4DD0E1"
+
+# Key-result status colours
+STATUS_GREEN = "#39D353"
+STATUS_RED = "#FF5C5C"
+STATUS_NEUTRAL = "#B8B8B8"
 
 
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
+plt.rcParams.update(
+    {
+        "font.family": "DejaVu Sans",
+        "font.size": 10,
+        "axes.titlesize": 13,
+        "axes.labelsize": 10.5,
+        "axes.titleweight": "normal",
+        "axes.linewidth": 0.9,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 9,
+        "figure.dpi": 120,
+        "savefig.dpi": 600,
+        "text.color": PLOT_TEXT,
+        "axes.labelcolor": PLOT_TEXT,
+        "axes.edgecolor": PLOT_TEXT,
+        "xtick.color": PLOT_TEXT,
+        "ytick.color": PLOT_TEXT,
+        "axes.facecolor": PLOT_BACKGROUND,
+        "figure.facecolor": PLOT_BACKGROUND,
+        "savefig.facecolor": PLOT_BACKGROUND,
+    }
+)
+
+
+# =============================================================================
+# NUMERICAL INTEGRATION
+# =============================================================================
 
 def integrate_trapezoid(y, x):
-    """
-    Compatibility wrapper for NumPy versions where np.trapz
-    has been removed/deprecated.
-    """
+
     if hasattr(np, "trapezoid"):
         return np.trapezoid(y, x)
 
     return np.trapz(y, x)
 
 
-# ============================================================
-# KEY RESULT RENDERING
-# ============================================================
+# =============================================================================
+# DOSE SCALING
+# =============================================================================
 
-def render_key_metric(
-    title,
-    value,
-    status_text="",
-    status="neutral",
-    caption="",
-):
-    """
-    Render one complete key-result card as a single HTML block.
-
-    IMPORTANT:
-    Do not construct nested HTML fragments here.
-    Streamlit's Markdown parser can interpret nested/generated
-    fragments as code blocks. Keeping the entire card as one
-    continuous HTML block avoids that problem.
-    """
-
-    if status == "positive":
-        colour = "#166534"
-        background = "#DCFCE7"
-
-    elif status == "negative":
-        colour = "#991B1B"
-        background = "#FEE2E2"
-
-    else:
-        colour = "#4B5563"
-        background = "#F3F4F6"
-
-    html = f"""
-<div class="metric-card">
-    <div class="metric-title">{title}</div>
-
-    <div class="metric-value">
-        {value}
-    </div>
-
-    <span style="display:inline-block; padding:3px 8px; border-radius:999px; font-size:0.75rem; font-weight:600; color:{colour}; background:{background}; margin-top:3px;">
-        {status_text}
-    </span>
-
-    <div style="font-size:0.72rem; color:#6B7280; margin-top:5px; line-height:1.25;">
-        {caption}
-    </div>
-</div>
-"""
-
-    st.markdown(
-        html,
-        unsafe_allow_html=True,
-    )
-
-
-# ============================================================
-# SECONDARY METRIC RENDERING
-# ============================================================
-
-def render_secondary_metric(
-    title,
-    value,
-    caption="",
-):
-    """
-    Render one complete secondary metric as a single HTML block.
-    """
-
-    html = f"""
-<div class="metric-card-secondary">
-    <div class="metric-title-secondary">
-        {title}
-    </div>
-
-    <div class="metric-value-secondary">
-        {value}
-    </div>
-
-    <div class="metric-caption">
-        {caption}
-    </div>
-</div>
-"""
-
-    st.markdown(
-        html,
-        unsafe_allow_html=True,
-    )
-
-
-# ============================================================
-# CUSTOM CSS
-# ============================================================
-
-st.markdown(
-    """
-<style>
-
-.main-title {
-    font-size: 2.1rem;
-    font-weight: 700;
-    margin-bottom: 0.15rem;
-}
-
-.main-subtitle {
-    color: #6B7280;
-    font-size: 0.95rem;
-    margin-bottom: 1.2rem;
-}
-
-.section-header {
-    font-size: 1.25rem;
-    font-weight: 700;
-    margin-top: 1.0rem;
-    margin-bottom: 0.65rem;
-}
-
-.metric-card {
-    background: #FFFFFF;
-    border: 1px solid #E5E7EB;
-    border-radius: 12px;
-    padding: 14px 16px 13px 16px;
-    min-height: 125px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-}
-
-.metric-title {
-    font-size: 0.80rem;
-    font-weight: 600;
-    color: #6B7280;
-    margin-bottom: 3px;
-}
-
-.metric-value {
-    font-size: 1.55rem;
-    line-height: 1.15;
-    font-weight: 700;
-    color: #111827;
-    margin-bottom: 4px;
-}
-
-.metric-card-secondary {
-    background: #FFFDF4;
-    border: 1px solid #F2C94C;
-    border-left: 4px solid #F2C94C;
-    border-radius: 10px;
-    padding: 11px 14px 10px 14px;
-    min-height: 100px;
-}
-
-.metric-title-secondary {
-    font-size: 0.77rem;
-    font-weight: 600;
-    color: #A16207;
-    margin-bottom: 3px;
-}
-
-.metric-value-secondary {
-    font-size: 1.25rem;
-    line-height: 1.15;
-    font-weight: 700;
-    color: #92400E;
-    margin-bottom: 3px;
-}
-
-.metric-caption {
-    font-size: 0.70rem;
-    color: #78716C;
-    line-height: 1.2;
-}
-
-.plot-container {
-    margin-top: 0.2rem;
-}
-
-.sidebar-section {
-    font-size: 1.0rem;
-    font-weight: 700;
-    margin-top: 0.8rem;
-    margin-bottom: 0.3rem;
-}
-
-div[data-testid="stDownloadButton"] button {
-    width: 100%;
-}
-
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
-
-# ============================================================
-# MODEL CALCULATION
-# ============================================================
-
-def calculate_model(
+def calculate_dose_scaling(
     initial_burden_ml,
+    tumour_uptake_percent
+):
+
+    uptake_scale = (
+        tumour_uptake_percent /
+        DEFAULT_TUMOUR_UPTAKE_PERCENT
+    )
+
+    burden_scale = (
+        REFERENCE_METASTATIC_BURDEN_ML /
+        initial_burden_ml
+    )
+
+    dose_scale = (
+        uptake_scale *
+        burden_scale
+    )
+
+    return (
+        uptake_scale,
+        burden_scale,
+        dose_scale
+    )
+
+
+# =============================================================================
+# TREATMENT TIMES
+# =============================================================================
+
+def calculate_treatment_times(
+    n_cycles,
+    interval_days
+):
+
+    return np.array(
+        [
+            i * interval_days
+            for i in range(n_cycles)
+        ],
+        dtype=float
+    )
+
+
+# =============================================================================
+# PHYSICAL DOSE RATE
+# =============================================================================
+
+def calculate_physical_dose_rate(
+    time_days,
+    activity_gbq,
+    n_cycles,
+    interval_days,
+    initial_burden_ml,
+    tumour_uptake_percent
+):
+
+    (
+        uptake_scale,
+        burden_scale,
+        dose_scale
+    ) = calculate_dose_scaling(
+        initial_burden_ml,
+        tumour_uptake_percent
+    )
+
+    treatment_times = calculate_treatment_times(
+        n_cycles,
+        interval_days
+    )
+
+    dose_rate_gy_day = np.zeros_like(
+        time_days,
+        dtype=float
+    )
+
+    for t_admin in treatment_times:
+
+        elapsed = time_days - t_admin
+
+        mask = elapsed >= 0
+
+        activity = np.zeros_like(
+            time_days,
+            dtype=float
+        )
+
+        activity[mask] = (
+            activity_gbq *
+            np.exp(
+                -LU177_LAMBDA_PER_DAY *
+                elapsed[mask]
+            )
+        )
+
+        dose_rate_gy_day += (
+            activity *
+            DOSE_PER_GBQ_GY *
+            dose_scale
+        )
+
+    return (
+        dose_rate_gy_day,
+        treatment_times,
+        uptake_scale,
+        burden_scale,
+        dose_scale
+    )
+
+
+# =============================================================================
+# CRITICAL DOSE RATE
+# =============================================================================
+
+def calculate_critical_dose_rate(
+    alpha,
+    trep_days
+):
+
+    trep_hours = trep_days * 24.0
+
+    return (
+        np.log(2.0) /
+        (
+            alpha *
+            trep_hours
+        )
+    )
+
+
+# =============================================================================
+# EFFECTIVE DOSE RATE
+# =============================================================================
+
+def calculate_effective_dose_rate(
+    physical_dose_rate_gy_day,
+    critical_dose_rate_gy_h,
+    gamma
+):
+
+    critical_rate_gy_day = (
+        critical_dose_rate_gy_h *
+        24.0
+    )
+
+    ratio = np.divide(
+        physical_dose_rate_gy_day,
+        critical_rate_gy_day,
+        out=np.zeros_like(
+            physical_dose_rate_gy_day
+        ),
+        where=critical_rate_gy_day > 0
+    )
+
+    effectiveness = np.minimum(
+        1.0,
+        np.power(
+            np.maximum(
+                ratio,
+                0.0
+            ),
+            gamma
+        )
+    )
+
+    effective_dose_rate_gy_day = (
+        physical_dose_rate_gy_day *
+        effectiveness
+    )
+
+    return (
+        ratio,
+        effectiveness,
+        effective_dose_rate_gy_day
+    )
+
+
+# =============================================================================
+# TUMOUR DYNAMICS
+# =============================================================================
+
+def calculate_tumour_dynamics(
+    time_days,
+    physical_dose_rate_gy_day,
     alpha,
     trep_days,
     sensitive_fraction,
     resistant_tk_multiplier,
     resistant_radio_factor,
     repopulation_kickoff,
-    activity_gbq,
-    n_cycles,
-    interval_days,
-    tumour_uptake_percent,
+    initial_burden_ml
 ):
-    """
-    Run the complete tumour-dynamics model.
 
-    Initial tumour burden represents the total metastatic
-    tumour burden as an aggregate volume.
-    """
-
-    # --------------------------------------------------------
-    # Time grid
-    # --------------------------------------------------------
-
-    time_days = np.arange(
-        0.0,
-        SIMULATION_DAYS + DT_DAYS,
-        DT_DAYS,
-    )
-
-    n_points = len(time_days)
-
-    # --------------------------------------------------------
-    # Treatment administration times
-    # --------------------------------------------------------
-
-    administration_times = np.array(
-        [
-            i * interval_days
-            for i in range(n_cycles)
-        ],
-        dtype=float,
-    )
-
-    # --------------------------------------------------------
-    # Critical dose rate
-    # --------------------------------------------------------
-
-    trep_hours = trep_days * 24.0
-
-    critical_dose_rate_gy_h = (
-        np.log(2.0)
-        / (alpha * trep_hours)
-    )
-
-    critical_dose_rate_gy_day = (
-        critical_dose_rate_gy_h * 24.0
-    )
-
-    # --------------------------------------------------------
-    # Tumour uptake / burden scaling
-    # --------------------------------------------------------
-
-    uptake_scale = (
-        tumour_uptake_percent
-        / DEFAULT_TUMOUR_UPTAKE_PERCENT
-    )
-
-    burden_scale = (
-        REFERENCE_METASTATIC_BURDEN_ML
-        / initial_burden_ml
-    )
-
-    dose_scale = (
-        uptake_scale
-        * burden_scale
-    )
-
-    # --------------------------------------------------------
-    # Physical dose rate
-    # --------------------------------------------------------
-
-    physical_dose_rate_gy_day = np.zeros(
-        n_points,
-        dtype=float,
-    )
-
-    lambda_lu = (
-        np.log(2.0)
-        / LU177_HALF_LIFE_DAYS
-    )
-
-    for administration_time in administration_times:
-
-        elapsed = (
-            time_days
-            - administration_time
-        )
-
-        active = elapsed >= 0.0
-
-        activity = np.zeros(
-            n_points,
-            dtype=float,
-        )
-
-        activity[active] = (
-            activity_gbq
-            * np.exp(
-                -lambda_lu
-                * elapsed[active]
-            )
-        )
-
-        physical_dose_rate_gy_day += (
-            activity
-            * DOSE_PER_GBQ_GY
-            * dose_scale
-        )
-
-    physical_dose_rate_gy_h = (
-        physical_dose_rate_gy_day
-        / 24.0
-    )
-
-    # --------------------------------------------------------
-    # Effective dose rate
-    #
-    # No gamma slider.
-    #
-    # effectiveness = min(1, physical rate / critical rate)
-    # --------------------------------------------------------
-
-    dose_rate_ratio = np.divide(
-        physical_dose_rate_gy_day,
-        critical_dose_rate_gy_day,
-        out=np.zeros_like(
-            physical_dose_rate_gy_day
-        ),
-        where=critical_dose_rate_gy_day > 0,
-    )
-
-    effectiveness = np.minimum(
-        1.0,
-        np.maximum(
-            0.0,
-            dose_rate_ratio,
-        ),
-    )
-
-    effective_dose_rate_gy_day = (
-        physical_dose_rate_gy_day
-        * effectiveness
-    )
-
-    effective_dose_rate_gy_h = (
-        effective_dose_rate_gy_day
-        / 24.0
-    )
-
-    # --------------------------------------------------------
-    # Biological parameters
-    # --------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # LQ PARAMETERS
+    # -------------------------------------------------------------------------
 
     beta_sensitive = (
-        alpha
-        * DEFAULT_BETA_ALPHA
+        alpha *
+        DEFAULT_BETA_ALPHA
     )
 
     alpha_resistant = (
-        alpha
-        * resistant_radio_factor
+        alpha *
+        resistant_radio_factor
     )
 
     beta_resistant = (
-        beta_sensitive
-        * resistant_radio_factor
+        beta_sensitive *
+        resistant_radio_factor
     )
 
+    # -------------------------------------------------------------------------
+    # GROWTH RATES
+    # -------------------------------------------------------------------------
+
     sensitive_growth_rate = (
-        np.log(2.0)
-        / trep_days
+        np.log(2.0) /
+        trep_days
     )
 
     resistant_growth_rate = (
-        np.log(2.0)
-        / (
-            trep_days
-            * resistant_tk_multiplier
+        np.log(2.0) /
+        (
+            trep_days *
+            resistant_tk_multiplier
         )
     )
 
-    # --------------------------------------------------------
-    # Initial populations
-    # --------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # ARRAYS
+    # -------------------------------------------------------------------------
 
-    initial_sensitive_burden = (
-        initial_burden_ml
-        * sensitive_fraction
+    sensitive = np.zeros_like(
+        time_days,
+        dtype=float
     )
 
-    initial_resistant_burden = (
-        initial_burden_ml
-        * (1.0 - sensitive_fraction)
+    resistant = np.zeros_like(
+        time_days,
+        dtype=float
     )
 
-    sensitive = np.zeros(
-        n_points,
-        dtype=float,
-    )
-
-    resistant = np.zeros(
-        n_points,
-        dtype=float,
-    )
-
-    total_burden = np.zeros(
-        n_points,
-        dtype=float,
-    )
-
-    tcp = np.zeros(
-        n_points,
-        dtype=float,
-    )
+    # -------------------------------------------------------------------------
+    # INITIAL CONDITIONS
+    # -------------------------------------------------------------------------
 
     sensitive[0] = (
-        initial_sensitive_burden
+        initial_burden_ml *
+        sensitive_fraction
     )
 
     resistant[0] = (
-        initial_resistant_burden
+        initial_burden_ml *
+        (
+            1.0 -
+            sensitive_fraction
+        )
     )
 
-    total_burden[0] = (
-        sensitive[0]
-        + resistant[0]
-    )
+    # -------------------------------------------------------------------------
+    # TIME LOOP
+    # -------------------------------------------------------------------------
 
-    # --------------------------------------------------------
-    # Biological simulation
-    # --------------------------------------------------------
-
-    for i in range(1, n_points):
+    for i in range(1, len(time_days)):
 
         dt = (
-            time_days[i]
-            - time_days[i - 1]
+            time_days[i] -
+            time_days[i - 1]
         )
 
-        S = sensitive[i - 1]
-        R = resistant[i - 1]
+        s = sensitive[i - 1]
+        r = resistant[i - 1]
 
-        # ----------------------------------------------------
-        # Repopulation
-        # ----------------------------------------------------
+        # ---------------------------------------------------------------------
+        # REPOPULATION
+        # ---------------------------------------------------------------------
 
         if time_days[i] >= repopulation_kickoff:
 
-            S *= np.exp(
-                sensitive_growth_rate
-                * dt
+            s *= np.exp(
+                sensitive_growth_rate *
+                dt
             )
 
-            R *= np.exp(
-                resistant_growth_rate
-                * dt
+            r *= np.exp(
+                resistant_growth_rate *
+                dt
             )
 
-        # ----------------------------------------------------
-        # Radiation dose
-        # ----------------------------------------------------
+        # ---------------------------------------------------------------------
+        # RADIATION KILLING
+        # ---------------------------------------------------------------------
 
         dose_interval_gy = (
-            physical_dose_rate_gy_day[i]
-            * dt
+            physical_dose_rate_gy_day[i] *
+            dt
         )
 
-        # ----------------------------------------------------
-        # LQ survival
-        # ----------------------------------------------------
-
         survival_sensitive = np.exp(
-            -alpha
-            * dose_interval_gy
-            -beta_sensitive
-            * dose_interval_gy**2
+            -alpha *
+            dose_interval_gy
+            -
+            beta_sensitive *
+            dose_interval_gy ** 2
         )
 
         survival_resistant = np.exp(
-            -alpha_resistant
-            * dose_interval_gy
-            -beta_resistant
-            * dose_interval_gy**2
+            -alpha_resistant *
+            dose_interval_gy
+            -
+            beta_resistant *
+            dose_interval_gy ** 2
         )
 
-        S *= survival_sensitive
-        R *= survival_resistant
-
-        # ----------------------------------------------------
-        # Store
-        # ----------------------------------------------------
+        s *= survival_sensitive
+        r *= survival_resistant
 
         sensitive[i] = max(
-            S,
-            0.0,
+            s,
+            0.0
         )
 
         resistant[i] = max(
-            R,
-            0.0,
+            r,
+            0.0
         )
 
-        total_burden[i] = (
-            sensitive[i]
-            + resistant[i]
-        )
+    # -------------------------------------------------------------------------
+    # TOTAL BURDEN
+    # -------------------------------------------------------------------------
 
-    # --------------------------------------------------------
-    # Resistant composition
-    # --------------------------------------------------------
+    total = (
+        sensitive +
+        resistant
+    )
+
+    # -------------------------------------------------------------------------
+    # INITIAL RESISTANT BURDEN
+    # -------------------------------------------------------------------------
+
+    initial_resistant_burden = (
+        initial_burden_ml *
+        (
+            1.0 -
+            sensitive_fraction
+        )
+    )
+
+    # -------------------------------------------------------------------------
+    # RESISTANT COMPOSITION
+    #
+    # Percentage of CURRENT tumour that is resistant.
+    # -------------------------------------------------------------------------
 
     resistant_composition_fraction = np.divide(
         resistant,
-        total_burden,
+        total,
         out=np.zeros_like(resistant),
-        where=total_burden > 0,
+        where=total > 0
     )
 
-    # --------------------------------------------------------
-    # Residual resistant burden
-    # --------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # RESIDUAL RESISTANT BURDEN
+    #
+    # Percentage of INITIAL resistant tumour burden remaining.
+    # -------------------------------------------------------------------------
 
-    residual_resistant_burden_percent = (
-        np.divide(
-            resistant,
-            initial_resistant_burden,
-            out=np.zeros_like(resistant),
-            where=initial_resistant_burden > 0,
-        )
-        * 100.0
+    residual_resistant_burden_percent = np.divide(
+        resistant,
+        initial_resistant_burden,
+        out=np.zeros_like(resistant),
+        where=initial_resistant_burden > 0
+    ) * 100.0
+
+    return (
+        total,
+        sensitive,
+        resistant,
+        resistant_composition_fraction,
+        residual_resistant_burden_percent,
+        initial_resistant_burden
     )
 
-    # --------------------------------------------------------
-    # TCP
-    # --------------------------------------------------------
+
+# =============================================================================
+# TCP
+# =============================================================================
+
+def calculate_tcp(
+    total_burden_ml,
+    initial_burden_ml
+):
 
     relative_burden = np.divide(
-        total_burden,
+        total_burden_ml,
         initial_burden_ml,
-        out=np.zeros_like(total_burden),
-        where=initial_burden_ml > 0,
+        out=np.zeros_like(
+            total_burden_ml
+        ),
+        where=initial_burden_ml > 0
     )
 
     surviving_clonogens = (
-        INITIAL_CLONOGENIC_BURDEN
-        * relative_burden
+        INITIAL_CLONOGENIC_BURDEN *
+        relative_burden
     )
 
     tcp = np.exp(
         -surviving_clonogens
     )
 
-    tcp = np.clip(
+    return np.clip(
         tcp,
         0.0,
-        1.0,
+        1.0
     )
 
-    # --------------------------------------------------------
-    # Summary calculations
-    # --------------------------------------------------------
 
-    cumulative_physical_dose_gy = integrate_trapezoid(
+# =============================================================================
+# SUMMARY
+# =============================================================================
+
+def calculate_summary(
+    time_days,
+    physical_dose_rate_gy_day,
+    effective_dose_rate_gy_day,
+    critical_dose_rate_gy_h,
+    total_burden,
+    sensitive_burden,
+    resistant_burden,
+    resistant_composition_fraction,
+    residual_resistant_burden_percent,
+    tcp,
+    treatment_times
+):
+
+    physical_rate_gy_h = (
+        physical_dose_rate_gy_day /
+        24.0
+    )
+
+    effective_rate_gy_h = (
+        effective_dose_rate_gy_day /
+        24.0
+    )
+
+    # -------------------------------------------------------------------------
+    # DOSE
+    # -------------------------------------------------------------------------
+
+    cumulative_physical_dose = integrate_trapezoid(
         physical_dose_rate_gy_day,
-        time_days,
+        time_days
     )
 
-    cumulative_effective_dose_gy = integrate_trapezoid(
+    cumulative_effective_dose = integrate_trapezoid(
         effective_dose_rate_gy_day,
-        time_days,
+        time_days
     )
+
+    peak_physical_rate = np.max(
+        physical_rate_gy_h
+    )
+
+    peak_effective_rate = np.max(
+        effective_rate_gy_h
+    )
+
+    # -------------------------------------------------------------------------
+    # CRITICAL DOSE RATE
+    # -------------------------------------------------------------------------
 
     above_critical = (
-        physical_dose_rate_gy_h
-        >= critical_dose_rate_gy_h
+        physical_rate_gy_h >=
+        critical_dose_rate_gy_h
     )
 
-    time_above_critical_days = (
-        np.sum(above_critical)
-        * DT_DAYS
-    )
+    if len(time_days) > 1:
 
-    longest_continuous_days = 0.0
+        dt_days = np.diff(
+            time_days
+        )
+
+        time_above_critical = np.sum(
+            dt_days *
+            above_critical[:-1]
+        )
+
+    else:
+
+        time_above_critical = 0.0
+
+    # -------------------------------------------------------------------------
+    # LONGEST CONTINUOUS PERIOD
+    # -------------------------------------------------------------------------
+
+    longest_continuous = 0.0
     current_duration = 0.0
 
-    for flag in above_critical:
+    for i in range(1, len(time_days)):
 
-        if flag:
+        if (
+            above_critical[i - 1]
+            and
+            above_critical[i]
+        ):
 
-            current_duration += DT_DAYS
+            current_duration += (
+                time_days[i] -
+                time_days[i - 1]
+            )
 
-            longest_continuous_days = max(
-                longest_continuous_days,
-                current_duration,
+            longest_continuous = max(
+                longest_continuous,
+                current_duration
             )
 
         else:
 
             current_duration = 0.0
 
-    peak_index = int(
-        np.argmax(
-            physical_dose_rate_gy_h
-        )
+    # -------------------------------------------------------------------------
+    # TUMOUR RESPONSE
+    # -------------------------------------------------------------------------
+
+    minimum_burden = np.min(
+        total_burden
     )
 
-    peak_dose_rate_gy_h = (
-        physical_dose_rate_gy_h[
-            peak_index
-        ]
+    minimum_burden_day = time_days[
+        np.argmin(total_burden)
+    ]
+
+    final_burden = total_burden[-1]
+
+    maximum_tcp = np.max(tcp)
+
+    maximum_tcp_percent = (
+        maximum_tcp *
+        100.0
     )
 
-    peak_day = (
-        time_days[
-            peak_index
-        ]
-    )
+    maximum_tcp_day = time_days[
+        np.argmax(tcp)
+    ]
 
-    minimum_burden_index = int(
-        np.argmin(
-            total_burden
-        )
-    )
-
-    minimum_burden_ml = (
-        total_burden[
-            minimum_burden_index
-        ]
-    )
-
-    minimum_burden_day = (
-        time_days[
-            minimum_burden_index
-        ]
-    )
-
-    maximum_tcp_index = int(
-        np.argmax(
-            tcp
-        )
-    )
-
-    maximum_tcp = (
-        tcp[
-            maximum_tcp_index
-        ]
-    )
-
-    maximum_tcp_day = (
-        time_days[
-            maximum_tcp_index
-        ]
-    )
-
-    final_resistant_burden_percent = (
+    final_residual_resistant_percent = (
         residual_resistant_burden_percent[-1]
     )
 
+    minimum_residual_resistant_percent = (
+        np.min(
+            residual_resistant_burden_percent
+        )
+    )
+
+    final_resistant_composition = (
+        resistant_composition_fraction[-1] *
+        100.0
+    )
+
+    final_sensitive = sensitive_burden[-1]
+    final_resistant = resistant_burden[-1]
+
+    treatment_times_text = ", ".join(
+        f"{x:.1f}"
+        for x in treatment_times
+    )
+
     return {
-        "time_days":
-            time_days,
 
-        "administration_times":
-            administration_times,
+        "Minimum tumour burden (mL)":
+            minimum_burden,
 
-        "physical_dose_rate_gy_day":
-            physical_dose_rate_gy_day,
-
-        "physical_dose_rate_gy_h":
-            physical_dose_rate_gy_h,
-
-        "effective_dose_rate_gy_day":
-            effective_dose_rate_gy_day,
-
-        "effective_dose_rate_gy_h":
-            effective_dose_rate_gy_h,
-
-        "critical_dose_rate_gy_h":
-            critical_dose_rate_gy_h,
-
-        "critical_dose_rate_gy_day":
-            critical_dose_rate_gy_day,
-
-        "dose_rate_ratio":
-            dose_rate_ratio,
-
-        "effectiveness":
-            effectiveness,
-
-        "sensitive":
-            sensitive,
-
-        "resistant":
-            resistant,
-
-        "total_burden":
-            total_burden,
-
-        "tcp":
-            tcp,
-
-        "resistant_composition_fraction":
-            resistant_composition_fraction,
-
-        "residual_resistant_burden_percent":
-            residual_resistant_burden_percent,
-
-        "initial_resistant_burden":
-            initial_resistant_burden,
-
-        "cumulative_physical_dose_gy":
-            cumulative_physical_dose_gy,
-
-        "cumulative_effective_dose_gy":
-            cumulative_effective_dose_gy,
-
-        "time_above_critical_days":
-            time_above_critical_days,
-
-        "longest_continuous_above_days":
-            longest_continuous_days,
-
-        "peak_dose_rate_gy_h":
-            peak_dose_rate_gy_h,
-
-        "peak_day":
-            peak_day,
-
-        "minimum_burden_ml":
-            minimum_burden_ml,
-
-        "minimum_burden_day":
+        "Day of minimum tumour burden":
             minimum_burden_day,
 
-        "maximum_tcp":
-            maximum_tcp,
+        "Final tumour burden (mL)":
+            final_burden,
 
-        "maximum_tcp_day":
+        "Maximum TCP (%)":
+            maximum_tcp_percent,
+
+        "Day of maximum TCP":
             maximum_tcp_day,
 
-        "final_resistant_burden_percent":
-            final_resistant_burden_percent,
+        "Final residual resistant burden (%)":
+            final_residual_resistant_percent,
 
-        "initial_burden_ml":
-            initial_burden_ml,
+        "Minimum residual resistant burden (%)":
+            minimum_residual_resistant_percent,
 
-        "sensitive_fraction":
-            sensitive_fraction,
+        "Final resistant composition (%)":
+            final_resistant_composition,
 
-        "activity_gbq":
-            activity_gbq,
+        "Final sensitive burden (mL)":
+            final_sensitive,
 
-        "n_cycles":
-            n_cycles,
+        "Final resistant burden (mL)":
+            final_resistant,
 
-        "interval_days":
-            interval_days,
+        "Critical dose rate (Gy/h)":
+            critical_dose_rate_gy_h,
 
-        "tumour_uptake_percent":
-            tumour_uptake_percent,
+        "Peak physical dose rate (Gy/h)":
+            peak_physical_rate,
 
-        "dose_scale":
-            dose_scale,
+        "Peak effective dose rate (Gy/h)":
+            peak_effective_rate,
+
+        "Time above critical dose rate (days)":
+            time_above_critical,
+
+        "Longest continuous time above critical (days)":
+            longest_continuous,
+
+        "Cumulative physical dose (Gy)":
+            cumulative_physical_dose,
+
+        "Effective cumulative dose (Gy)":
+            cumulative_effective_dose,
+
+        "Treatment times (days)":
+            treatment_times_text,
     }
 
 
-# ============================================================
-# PLOT HELPERS
-# ============================================================
+# =============================================================================
+# PLOT STYLING
+# =============================================================================
 
-def add_treatment_markers(
-    ax,
-    administration_times,
-):
+def style_axis(ax):
 
-    for t in administration_times:
+    ax.set_facecolor(
+        PLOT_BACKGROUND
+    )
 
-        ax.axvline(
-            t,
-            color=PLOT_TREATMENT,
-            linestyle="--",
-            linewidth=1.0,
-            alpha=0.65,
+    ax.tick_params(
+        colors=PLOT_TEXT,
+        direction="out",
+        length=4.5,
+        width=0.8
+    )
+
+    for spine in ax.spines.values():
+
+        spine.set_color(
+            PLOT_TEXT
+        )
+
+        spine.set_linewidth(
+            0.8
+        )
+
+    ax.grid(
+        True,
+        which="major",
+        linestyle="--",
+        linewidth=0.45,
+        color=PLOT_GRID,
+        alpha=0.42
+    )
+
+    ax.grid(
+        True,
+        which="minor",
+        linestyle=":",
+        linewidth=0.30,
+        color=PLOT_GRID,
+        alpha=0.20
+    )
+
+    ax.xaxis.set_major_locator(
+        MaxNLocator(nbins=9)
+    )
+
+    ax.yaxis.set_major_locator(
+        MaxNLocator(nbins=8)
+    )
+
+    ax.minorticks_on()
+
+    ax.tick_params(
+        which="minor",
+        length=2.5,
+        width=0.5,
+        color=PLOT_TEXT
+    )
+
+
+def style_legend(legend):
+
+    frame = legend.get_frame()
+
+    frame.set_facecolor(
+        PLOT_BACKGROUND
+    )
+
+    frame.set_edgecolor(
+        "#555555"
+    )
+
+    frame.set_alpha(
+        0.85
+    )
+
+    for text in legend.get_texts():
+
+        text.set_color(
+            PLOT_TEXT
         )
 
 
-def make_dose_rate_plot(results):
+def add_treatment_markers(
+    ax,
+    treatment_times,
+    alpha=0.30
+):
 
-    fig, ax = plt.subplots(
-        figsize=(8, 5),
-    )
-
-    time = results["time_days"]
-
-    ax.plot(
-        time,
-        results["physical_dose_rate_gy_h"],
-        linewidth=2.0,
-        label="Physical dose rate",
-    )
-
-    ax.plot(
-        time,
-        results["effective_dose_rate_gy_h"],
-        linewidth=2.0,
-        linestyle="--",
-        label="Effective dose rate",
-    )
-
-    ax.axhline(
-        results["critical_dose_rate_gy_h"],
-        linestyle=":",
-        linewidth=1.8,
-        label="Critical dose rate",
-    )
-
-    add_treatment_markers(
-        ax,
-        results["administration_times"],
-    )
-
-    ax.set_xlabel(
-        "Time (days)"
-    )
-
-    ax.set_ylabel(
-        "Dose rate (Gy/h)"
-    )
-
-    ax.set_title(
-        "Physical vs effective dose rate"
-    )
-
-    ax.grid(
-        alpha=0.25
-    )
-
-    ax.legend(
-        frameon=False
-    )
-
-    fig.tight_layout()
-
-    return fig
-
-
-def make_burden_plot(results):
-
-    fig, ax = plt.subplots(
-        figsize=(8, 5),
-    )
-
-    time = results["time_days"]
-
-    ax.plot(
-        time,
-        results["total_burden"],
-        linewidth=2.2,
-        label="Total tumour burden",
-    )
-
-    add_treatment_markers(
-        ax,
-        results["administration_times"],
-    )
-
-    ax.set_xlabel(
-        "Time (days)"
-    )
-
-    ax.set_ylabel(
-        "Tumour burden (mL)"
-    )
-
-    ax.set_title(
-        "Total tumour burden"
-    )
-
-    ax.grid(
-        alpha=0.25
-    )
-
-    ax.legend(
-        frameon=False
-    )
-
-    fig.tight_layout()
-
-    return fig
-
-
-def make_population_plot(results):
-
-    fig, ax1 = plt.subplots(
-        figsize=(8, 5),
-    )
-
-    time = results["time_days"]
-
-    ax1.plot(
-        time,
-        results["sensitive"],
-        linewidth=2.0,
-        label="Sensitive tumour",
-    )
-
-    ax1.plot(
-        time,
-        results["resistant"],
-        linewidth=2.0,
-        label="Resistant tumour",
-    )
-
-    ax1.set_xlabel(
-        "Time (days)"
-    )
-
-    ax1.set_ylabel(
-        "Tumour burden (mL)"
-    )
-
-    ax1.set_title(
-        "Sensitive and resistant tumour populations"
-    )
-
-    ax1.grid(
-        alpha=0.25
-    )
-
-    ax2 = ax1.twinx()
-
-    ax2.plot(
-        time,
-        results[
-            "residual_resistant_burden_percent"
-        ],
-        linewidth=1.8,
-        linestyle="--",
-        label="Residual resistant burden",
-    )
-
-    ax2.set_ylabel(
-        "Residual resistant burden (% of initial)"
-    )
-
-    add_treatment_markers(
-        ax1,
-        results["administration_times"],
-    )
-
-    lines1, labels1 = (
-        ax1.get_legend_handles_labels()
-    )
-
-    lines2, labels2 = (
-        ax2.get_legend_handles_labels()
-    )
-
-    ax1.legend(
-        lines1 + lines2,
-        labels1 + labels2,
-        frameon=False,
-        loc="upper right",
-    )
-
-    fig.tight_layout()
-
-    return fig
-
-
-def make_tcp_plot(results):
-
-    fig, ax = plt.subplots(
-        figsize=(8, 5),
-    )
-
-    time = results["time_days"]
-
-    ax.plot(
-        time,
-        results["tcp"] * 100.0,
-        linewidth=2.2,
-        label="TCP",
-    )
-
-    ax.axhline(
-        50.0,
-        linestyle=":",
-        linewidth=1.5,
-        label="50% TCP",
-    )
-
-    add_treatment_markers(
-        ax,
-        results["administration_times"],
-    )
-
-    ax.set_xlabel(
-        "Time (days)"
-    )
-
-    ax.set_ylabel(
-        "Tumour control probability (%)"
-    )
-
-    ax.set_ylim(
-        0,
-        100,
-    )
-
-    ax.set_title(
-        "Tumour control probability"
-    )
-
-    ax.grid(
-        alpha=0.25
-    )
+    for t_admin in treatment_times:
 
-    ax.legend(
-        frameon=False
-    )
-
-    fig.tight_layout()
-
-    return fig
-
-
-# ============================================================
-# CSV EXPORT
-# ============================================================
-
-def create_csv(results):
-
-    df = pd.DataFrame(
-        {
-            "Time_days":
-                results["time_days"],
-
-            "Physical_dose_rate_Gy_h":
-                results[
-                    "physical_dose_rate_gy_h"
-                ],
-
-            "Physical_dose_rate_Gy_day":
-                results[
-                    "physical_dose_rate_gy_day"
-                ],
-
-            "Effective_dose_rate_Gy_h":
-                results[
-                    "effective_dose_rate_gy_h"
-                ],
-
-            "Effective_dose_rate_Gy_day":
-                results[
-                    "effective_dose_rate_gy_day"
-                ],
-
-            "Critical_dose_rate_Gy_h":
-                results[
-                    "critical_dose_rate_gy_h"
-                ],
-
-            "Dose_rate_ratio":
-                results[
-                    "dose_rate_ratio"
-                ],
-
-            "Dose_rate_effectiveness":
-                results[
-                    "effectiveness"
-                ],
-
-            "Sensitive_tumour_mL":
-                results[
-                    "sensitive"
-                ],
-
-            "Resistant_tumour_mL":
-                results[
-                    "resistant"
-                ],
-
-            "Total_tumour_burden_mL":
-                results[
-                    "total_burden"
-                ],
-
-            "Resistant_composition_percent":
-                results[
-                    "resistant_composition_fraction"
-                ]
-                * 100.0,
-
-            "Residual_resistant_burden_percent":
-                results[
-                    "residual_resistant_burden_percent"
-                ],
-
-            "TCP_percent":
-                results[
-                    "tcp"
-                ]
-                * 100.0,
-        }
-    )
-
-    return df.to_csv(
-        index=False
-    ).encode("utf-8")
-
-
-# ============================================================
-# HIGH-RESOLUTION PNG EXPORT
-# ============================================================
-
-def create_png_export(results):
-
-    fig, axes = plt.subplots(
-        2,
-        2,
-        figsize=(16, 11),
-    )
-
-    time = results["time_days"]
-
-    # --------------------------------------------------------
-    # Dose rate
-    # --------------------------------------------------------
-
-    ax = axes[0, 0]
-
-    ax.plot(
-        time,
-        results["physical_dose_rate_gy_h"],
-        linewidth=2.0,
-        label="Physical dose rate",
-    )
-
-    ax.plot(
-        time,
-        results["effective_dose_rate_gy_h"],
-        linewidth=2.0,
-        linestyle="--",
-        label="Effective dose rate",
-    )
-
-    ax.axhline(
-        results["critical_dose_rate_gy_h"],
-        linestyle=":",
-        linewidth=1.8,
-        label="Critical dose rate",
-    )
-
-    add_treatment_markers(
-        ax,
-        results["administration_times"],
-    )
-
-    ax.set_xlabel(
-        "Time (days)"
-    )
-
-    ax.set_ylabel(
-        "Dose rate (Gy/h)"
-    )
-
-    ax.set_title(
-        "Physical vs effective dose rate"
-    )
-
-    ax.grid(
-        alpha=0.25
-    )
-
-    ax.legend(
-        frameon=False
-    )
+        ax.axvline(
+            t_admin,
+            linestyle=":",
+            linewidth=0.75,
+            color=PLOT_TREATMENT,
+            alpha=alpha,
+            zorder=1
+        )
 
-    # --------------------------------------------------------
-    # Tumour burden
-    # --------------------------------------------------------
 
-    ax = axes[0, 1]
+# =============================================================================
+# KEY RESULT HELPER
+# =============================================================================
 
-    ax.plot(
-        time,
-        results["total_burden"],
-        linewidth=2.2,
-    )
-
-    add_treatment_markers(
-        ax,
-        results["administration_times"],
-    )
-
-    ax.set_xlabel(
-        "Time (days)"
-    )
-
-    ax.set_ylabel(
-        "Tumour burden (mL)"
-    )
-
-    ax.set_title(
-        "Total tumour burden"
-    )
-
-    ax.grid(
-        alpha=0.25
-    )
-
-    # --------------------------------------------------------
-    # Sensitive / resistant
-    # --------------------------------------------------------
-
-    ax = axes[1, 0]
-
-    ax.plot(
-        time,
-        results["sensitive"],
-        linewidth=2.0,
-        label="Sensitive tumour",
-    )
-
-    ax.plot(
-        time,
-        results["resistant"],
-        linewidth=2.0,
-        label="Resistant tumour",
-    )
-
-    add_treatment_markers(
-        ax,
-        results["administration_times"],
-    )
-
-    ax.set_xlabel(
-        "Time (days)"
-    )
-
-    ax.set_ylabel(
-        "Tumour burden (mL)"
-    )
-
-    ax.set_title(
-        "Sensitive and resistant tumour"
-    )
-
-    ax.grid(
-        alpha=0.25
-    )
-
-    ax.legend(
-        frameon=False
-    )
-
-    # --------------------------------------------------------
-    # TCP
-    # --------------------------------------------------------
+def key_result_status(
+    text,
+    status="neutral"
+):
 
-    ax = axes[1, 1]
-
-    ax.plot(
-        time,
-        results["tcp"] * 100.0,
-        linewidth=2.2,
-        label="TCP",
-    )
-
-    ax.axhline(
-        50.0,
-        linestyle=":",
-        linewidth=1.5,
-        label="50% TCP",
-    )
-
-    add_treatment_markers(
-        ax,
-        results["administration_times"],
-    )
+    if status == "positive":
 
-    ax.set_xlabel(
-        "Time (days)"
-    )
+        colour = STATUS_GREEN
 
-    ax.set_ylabel(
-        "TCP (%)"
-    )
+    elif status == "negative":
 
-    ax.set_ylim(
-        0,
-        100,
-    )
+        colour = STATUS_RED
 
-    ax.set_title(
-        "Tumour control probability"
-    )
+    else:
 
-    ax.grid(
-        alpha=0.25
-    )
+        colour = STATUS_NEUTRAL
 
-    ax.legend(
-        frameon=False
+    st.markdown(
+        f"""
+        <div style="
+            color: {colour};
+            font-size: 0.82rem;
+            font-weight: 600;
+            margin-top: -0.25rem;
+            margin-bottom: 0.10rem;
+            line-height: 1.25;
+        ">
+            {text}
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
-    fig.tight_layout()
 
-    buffer = io.BytesIO()
+def key_result_caption(text):
 
-    fig.savefig(
-        buffer,
-        format="png",
-        dpi=600,
-        bbox_inches="tight",
+    st.markdown(
+        f"""
+        <div style="
+            color: #AFAFAF;
+            font-size: 0.72rem;
+            margin-top: 0.05rem;
+            line-height: 1.25;
+        ">
+            {text}
+        </div>
+        """,
+        unsafe_allow_html=True
     )
-
-    plt.close(fig)
-
-    buffer.seek(0)
-
-    return buffer.getvalue()
-
-
-# ============================================================
-# PAGE HEADER
-# ============================================================
-
-st.markdown(
-    """
-<div class="main-title">
-    Lu-177 PSMA Optimisation
-</div>
-
-<div class="main-subtitle">
-    Interactive exploration of dose-rate effects,
-    tumour dynamics, resistant disease and tumour
-    control probability
-</div>
-""",
-    unsafe_allow_html=True,
-)
 
 
-# ============================================================
-# SIDEBAR CONTROLS
-# ============================================================
+# =============================================================================
+# SIDEBAR
+# =============================================================================
 
 st.sidebar.header(
-    "Model controls"
+    "Model parameters"
 )
 
-
-# ------------------------------------------------------------
-# Tumour parameters
-# ------------------------------------------------------------
-
-st.sidebar.markdown(
-    '<div class="sidebar-section">Tumour parameters</div>',
-    unsafe_allow_html=True,
-)
 
 initial_burden_ml = st.sidebar.slider(
     "Initial metastatic burden (mL)",
     min_value=10.0,
     max_value=1500.0,
-    value=float(DEFAULT_BURDEN),
+    value=DEFAULT_BURDEN,
     step=1.0,
-    help=(
-        "Total metastatic tumour burden represented "
-        "as an aggregate volume."
-    ),
+    format="%.0f"
 )
 
+
 alpha = st.sidebar.slider(
-    "Alpha (Gy⁻¹)",
+    "Alpha",
     min_value=0.001,
     max_value=0.50,
-    value=float(DEFAULT_ALPHA),
+    value=DEFAULT_ALPHA,
     step=0.001,
+    format="%.3f",
     help=(
-        "Linear radiation sensitivity parameter "
-        "used in the LQ model."
-    ),
+        "Linear radiation sensitivity parameter used in the "
+        "exploratory LQ model."
+    )
 )
+
 
 trep_days = st.sidebar.slider(
     "Trep (days)",
     min_value=10.0,
     max_value=100.0,
-    value=float(DEFAULT_TREP),
+    value=DEFAULT_TREP,
     step=1.0,
-    help=(
-        "Sensitive tumour doubling time."
-    ),
+    format="%.0f"
 )
+
 
 sensitive_fraction = st.sidebar.slider(
     "Sensitive fraction",
     min_value=0.50,
     max_value=0.95,
-    value=float(DEFAULT_SENSITIVE_FRACTION),
+    value=DEFAULT_SENSITIVE_FRACTION,
     step=0.01,
-    help=(
-        "Initial fraction of tumour burden "
-        "assigned to the radiation-sensitive population."
-    ),
+    format="%.2f"
 )
 
+
 resistant_tk_multiplier = st.sidebar.slider(
-    "Tk/Trep",
+    "Tk / Trep",
     min_value=1.20,
     max_value=1.80,
-    value=float(DEFAULT_RESISTANT_TK_MULTIPLIER),
+    value=DEFAULT_RESISTANT_TK_MULTIPLIER,
     step=0.01,
-    help=(
-        "Resistant population doubling time relative "
-        "to the sensitive population."
-    ),
+    format="%.2f"
 )
+
 
 resistant_radio_factor = st.sidebar.slider(
     "Resistant radio factor",
     min_value=0.05,
     max_value=1.00,
-    value=float(DEFAULT_RESISTANT_RADIO_FACTOR),
+    value=DEFAULT_RESISTANT_RADIO_FACTOR,
     step=0.01,
-    help=(
-        "Relative radiosensitivity of the resistant "
-        "population compared with the sensitive population."
-    ),
+    format="%.2f"
 )
+
 
 repopulation_kickoff = st.sidebar.slider(
     "Repopulation kickoff (days)",
     min_value=3.0,
     max_value=10.0,
-    value=float(DEFAULT_REPOPULATION_KICKOFF),
-    step=1.0,
-    help=(
-        "Time after treatment initiation when tumour "
-        "repopulation begins."
-    ),
+    value=DEFAULT_REPOPULATION_KICKOFF,
+    step=0.5,
+    format="%.1f"
 )
 
-
-# ------------------------------------------------------------
-# Treatment parameters
-# ------------------------------------------------------------
-
-st.sidebar.markdown(
-    '<div class="sidebar-section">Treatment parameters</div>',
-    unsafe_allow_html=True,
-)
 
 activity_gbq = st.sidebar.slider(
-    "Activity per cycle (GBq)",
+    "Activity / cycle (GBq)",
     min_value=1.0,
     max_value=15.0,
-    value=float(DEFAULT_ACTIVITY),
+    value=DEFAULT_ACTIVITY,
     step=0.1,
-    help=(
-        "Administered Lu-177 activity per treatment cycle."
-    ),
+    format="%.1f"
 )
+
 
 n_cycles = st.sidebar.slider(
     "Number of cycles",
     min_value=1,
     max_value=8,
-    value=int(DEFAULT_N_CYCLES),
-    step=1,
-    help=(
-        "Number of Lu-177 treatment administrations."
-    ),
+    value=DEFAULT_CYCLES,
+    step=1
 )
+
 
 interval_days = st.sidebar.slider(
     "Cycle interval (days)",
     min_value=1,
     max_value=42,
-    value=int(DEFAULT_INTERVAL_DAYS),
-    step=1,
-    help=(
-        "Interval between treatment administrations."
-    ),
+    value=DEFAULT_INTERVAL,
+    step=1
 )
+
+
+gamma = st.sidebar.slider(
+    "Effectiveness gamma",
+    min_value=0.25,
+    max_value=2.00,
+    value=DEFAULT_GAMMA,
+    step=0.05,
+    format="%.2f"
+)
+
 
 tumour_uptake_percent = st.sidebar.slider(
     "Total tumour uptake (%)",
-    min_value=float(TUMOUR_UPTAKE_MIN_PERCENT),
-    max_value=float(TUMOUR_UPTAKE_MAX_PERCENT),
-    value=float(DEFAULT_TUMOUR_UPTAKE_PERCENT),
+    min_value=TUMOUR_UPTAKE_MIN_PERCENT,
+    max_value=TUMOUR_UPTAKE_MAX_PERCENT,
+    value=DEFAULT_TUMOUR_UPTAKE_PERCENT,
     step=0.1,
+    format="%.1f",
     help=(
-        "Phenomenological fraction of administered activity "
-        "associated with the total metastatic tumour burden."
-    ),
+        "Exploratory total metastatic tumour uptake of administered "
+        "Lu-177 activity. This is a phenomenological uptake scaling, "
+        "not a lesion-specific measured uptake or TAC."
+    )
 )
 
 
-# ============================================================
-# RUN MODEL
-# ============================================================
+# =============================================================================
+# SIMULATION TIME
+# =============================================================================
 
-results = calculate_model(
+simulation_days = max(
+    FOLLOW_UP_DAYS,
+    (
+        (
+            n_cycles -
+            1
+        ) *
+        interval_days
+    )
+    +
+    FOLLOW_UP_DAYS
+)
+
+
+time_days = np.arange(
+    0.0,
+    simulation_days + DT_DAYS,
+    DT_DAYS
+)
+
+
+# =============================================================================
+# DOSE
+# =============================================================================
+
+(
+    physical_dose_rate_gy_day,
+    treatment_times,
+    uptake_scale,
+    burden_scale,
+    dose_scale
+) = calculate_physical_dose_rate(
+    time_days=time_days,
+    activity_gbq=activity_gbq,
+    n_cycles=n_cycles,
+    interval_days=interval_days,
     initial_burden_ml=initial_burden_ml,
+    tumour_uptake_percent=tumour_uptake_percent
+)
+
+
+critical_dose_rate_gy_h = calculate_critical_dose_rate(
+    alpha=alpha,
+    trep_days=trep_days
+)
+
+
+(
+    dose_rate_ratio,
+    dose_rate_effectiveness,
+    effective_dose_rate_gy_day
+) = calculate_effective_dose_rate(
+    physical_dose_rate_gy_day,
+    critical_dose_rate_gy_h,
+    gamma
+)
+
+
+# =============================================================================
+# TUMOUR DYNAMICS
+# =============================================================================
+
+(
+    total_burden,
+    sensitive_burden,
+    resistant_burden,
+    resistant_composition_fraction,
+    residual_resistant_burden_percent,
+    initial_resistant_burden
+) = calculate_tumour_dynamics(
+    time_days=time_days,
+    physical_dose_rate_gy_day=physical_dose_rate_gy_day,
     alpha=alpha,
     trep_days=trep_days,
     sensitive_fraction=sensitive_fraction,
     resistant_tk_multiplier=resistant_tk_multiplier,
     resistant_radio_factor=resistant_radio_factor,
     repopulation_kickoff=repopulation_kickoff,
-    activity_gbq=activity_gbq,
-    n_cycles=n_cycles,
-    interval_days=interval_days,
-    tumour_uptake_percent=tumour_uptake_percent,
+    initial_burden_ml=initial_burden_ml
 )
 
 
-# ============================================================
-# KEY RESULTS
-# ============================================================
+# =============================================================================
+# TCP
+# =============================================================================
+
+tcp = calculate_tcp(
+    total_burden_ml=total_burden,
+    initial_burden_ml=initial_burden_ml
+)
+
+
+# =============================================================================
+# SUMMARY
+# =============================================================================
+
+summary = calculate_summary(
+    time_days=time_days,
+    physical_dose_rate_gy_day=physical_dose_rate_gy_day,
+    effective_dose_rate_gy_day=effective_dose_rate_gy_day,
+    critical_dose_rate_gy_h=critical_dose_rate_gy_h,
+    total_burden=total_burden,
+    sensitive_burden=sensitive_burden,
+    resistant_burden=resistant_burden,
+    resistant_composition_fraction=resistant_composition_fraction,
+    residual_resistant_burden_percent=residual_resistant_burden_percent,
+    tcp=tcp,
+    treatment_times=treatment_times
+)
+
+
+# =============================================================================
+# HEADER
+# =============================================================================
+
+st.title(
+    "Lu-177 PSMA Optimisation Model"
+)
 
 st.markdown(
-    '<div class="section-header">Key results</div>',
-    unsafe_allow_html=True,
+    """
+Interactive exploration of Lu-177 PSMA treatment schedules using
+physical dose-rate, tumour-response, resistant-disease and TCP models.
+"""
 )
 
-col1, col2, col3, col4 = st.columns(4)
+
+# =============================================================================
+# KEY RESULTS
+# =============================================================================
+
+st.subheader(
+    "Key results"
+)
 
 
-# ------------------------------------------------------------
-# Minimum tumour burden
-# ------------------------------------------------------------
+col1, col2, col3, col4 = st.columns(
+    4
+)
+
+
+# =============================================================================
+# KEY RESULT 1 — MINIMUM TUMOUR BURDEN
+# =============================================================================
+
+minimum_burden = summary[
+    "Minimum tumour burden (mL)"
+]
+
+
+burden_reduction_percent = (
+    100.0 *
+    (
+        1.0 -
+        minimum_burden /
+        initial_burden_ml
+    )
+)
+
 
 with col1:
 
-    burden_reduction = (
-        1.0
-        - (
-            results["minimum_burden_ml"]
-            / initial_burden_ml
+    st.markdown(
+        '<div style="font-size:0.78rem; color:#C8C8C8; '
+        'margin-bottom:-0.25rem;">Minimum tumour burden</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        f"""
+        <div style="
+            font-size: 1.55rem;
+            font-weight: 600;
+            line-height: 1.15;
+            color: #F2F2F2;
+            margin-bottom: 0.15rem;
+        ">
+            {minimum_burden:.1f} mL
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    if burden_reduction_percent > 0.05:
+
+        key_result_status(
+            f"↓ {burden_reduction_percent:.1f}% from "
+            f"{initial_burden_ml:.0f} mL baseline",
+            "positive"
         )
-    ) * 100.0
 
-    if burden_reduction > 0:
+    elif burden_reduction_percent < -0.05:
 
-        burden_status = "positive"
-
-        burden_text = (
-            f"↓ {burden_reduction:.1f}% "
-            f"from baseline"
+        key_result_status(
+            f"↑ {abs(burden_reduction_percent):.1f}% from "
+            f"{initial_burden_ml:.0f} mL baseline",
+            "negative"
         )
 
     else:
 
-        burden_status = "negative"
-
-        burden_text = (
-            f"↑ {abs(burden_reduction):.1f}% "
-            f"from baseline"
+        key_result_status(
+            "≈ No meaningful change from baseline",
+            "neutral"
         )
 
-    render_key_metric(
-        "Minimum tumour burden",
-        f'{results["minimum_burden_ml"]:.1f} mL',
-        burden_text,
-        burden_status,
-        (
-            f'Minimum reached at day '
-            f'{results["minimum_burden_day"]:.1f}'
-        ),
+    key_result_caption(
+        f"Minimum reached at day "
+        f"{summary['Day of minimum tumour burden']:.1f}"
     )
 
 
-# ------------------------------------------------------------
-# Maximum TCP
-# ------------------------------------------------------------
+# =============================================================================
+# KEY RESULT 2 — MAXIMUM TCP
+# =============================================================================
+
+maximum_tcp_percent = summary[
+    "Maximum TCP (%)"
+]
+
+
+tcp_change_percentage_points = (
+    maximum_tcp_percent -
+    INITIAL_TCP * 100.0
+)
+
 
 with col2:
 
-    maximum_tcp_percent = (
-        results["maximum_tcp"]
-        * 100.0
+    st.markdown(
+        '<div style="font-size:0.78rem; color:#C8C8C8; '
+        'margin-bottom:-0.25rem;">Maximum TCP</div>',
+        unsafe_allow_html=True
     )
 
-    tcp_change_pp = (
-        maximum_tcp_percent
-        - INITIAL_TCP * 100.0
+    st.markdown(
+        f"""
+        <div style="
+            font-size: 1.55rem;
+            font-weight: 600;
+            line-height: 1.15;
+            color: #F2F2F2;
+            margin-bottom: 0.15rem;
+        ">
+            {maximum_tcp_percent:.1f}%
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
-    if tcp_change_pp > 0:
+    if tcp_change_percentage_points > 0.05:
 
-        tcp_status = "positive"
+        key_result_status(
+            f"↑ {tcp_change_percentage_points:.1f} "
+            f"percentage points from 10% baseline",
+            "positive"
+        )
 
-        tcp_text = (
-            f"↑ {tcp_change_pp:.1f} "
-            f"percentage points"
+    elif tcp_change_percentage_points < -0.05:
+
+        key_result_status(
+            f"↓ {abs(tcp_change_percentage_points):.1f} "
+            f"percentage points from 10% baseline",
+            "negative"
         )
 
     else:
 
-        tcp_status = "negative"
-
-        tcp_text = (
-            f"↓ {abs(tcp_change_pp):.1f} "
-            f"percentage points"
+        key_result_status(
+            "≈ No meaningful change from baseline",
+            "neutral"
         )
 
-    render_key_metric(
-        "Maximum TCP",
-        f"{maximum_tcp_percent:.1f}%",
-        tcp_text,
-        tcp_status,
-        (
-            f'Maximum reached at day '
-            f'{results["maximum_tcp_day"]:.1f}'
-        ),
+    key_result_caption(
+        f"Maximum reached at day "
+        f"{summary['Day of maximum TCP']:.1f}"
     )
 
 
-# ------------------------------------------------------------
-# Residual resistant burden
-# ------------------------------------------------------------
+# =============================================================================
+# KEY RESULT 3 — RESIDUAL RESISTANT BURDEN
+# =============================================================================
+
+final_residual_resistant_percent = summary[
+    "Final residual resistant burden (%)"
+]
+
+
+initial_resistant_fraction_percent = (
+    (
+        1.0 -
+        sensitive_fraction
+    ) *
+    100.0
+)
+
+
+resistant_reduction_percent = (
+    100.0 -
+    final_residual_resistant_percent
+)
+
 
 with col3:
 
-    residual_resistant = (
-        results[
-            "final_resistant_burden_percent"
-        ]
+    st.markdown(
+        '<div style="font-size:0.78rem; color:#C8C8C8; '
+        'margin-bottom:-0.25rem;">Residual resistant burden</div>',
+        unsafe_allow_html=True
     )
 
-    resistant_reduction = (
-        100.0
-        - residual_resistant
+    st.markdown(
+        f"""
+        <div style="
+            font-size: 1.55rem;
+            font-weight: 600;
+            line-height: 1.15;
+            color: #F2F2F2;
+            margin-bottom: 0.15rem;
+        ">
+            {final_residual_resistant_percent:.1f}%
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
-    if resistant_reduction > 0:
+    if resistant_reduction_percent > 0.05:
 
-        resistant_status = "positive"
+        key_result_status(
+            f"↓ {resistant_reduction_percent:.1f}% "
+            f"of initial resistant burden",
+            "positive"
+        )
 
-        resistant_text = (
-            f"↓ {resistant_reduction:.1f}% "
-            f"from initial resistant burden"
+    elif resistant_reduction_percent < -0.05:
+
+        key_result_status(
+            f"↑ {abs(resistant_reduction_percent):.1f}% "
+            f"of initial resistant burden",
+            "negative"
         )
 
     else:
 
-        resistant_status = "negative"
-
-        resistant_text = (
-            f"↑ {abs(resistant_reduction):.1f}% "
-            f"from initial resistant burden"
+        key_result_status(
+            "≈ No meaningful change in resistant burden",
+            "neutral"
         )
 
-    render_key_metric(
-        "Residual resistant burden",
-        f"{residual_resistant:.1f}%",
-        resistant_text,
-        resistant_status,
-        (
-            f'Initial resistant burden: '
-            f'{results["initial_resistant_burden"]:.1f} mL '
-            f'({(1.0 - sensitive_fraction) * 100.0:.0f}% of total)'
-        ),
+    key_result_caption(
+        f"Initial resistant burden: "
+        f"{initial_resistant_burden:.1f} mL "
+        f"({initial_resistant_fraction_percent:.1f}% of total)"
     )
 
 
-# ------------------------------------------------------------
-# Cumulative physical dose
-# ------------------------------------------------------------
+# =============================================================================
+# KEY RESULT 4 — CUMULATIVE PHYSICAL DOSE
+# =============================================================================
+
+cumulative_physical_dose = summary[
+    "Cumulative physical dose (Gy)"
+]
+
 
 with col4:
 
-    render_key_metric(
-        "Cumulative physical dose",
-        (
-            f'{results["cumulative_physical_dose_gy"]:.2f} Gy'
-        ),
-        (
-            f'{activity_gbq:.1f} GBq × '
-            f'{n_cycles} cycles'
-        ),
-        "neutral",
-        "Integrated over the 180-day simulation",
+    st.markdown(
+        '<div style="font-size:0.78rem; color:#C8C8C8; '
+        'margin-bottom:-0.25rem;">Cumulative physical dose</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        f"""
+        <div style="
+            font-size: 1.55rem;
+            font-weight: 600;
+            line-height: 1.15;
+            color: #F2F2F2;
+            margin-bottom: 0.15rem;
+        ">
+            {cumulative_physical_dose:.2f} Gy
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    key_result_status(
+        f"{activity_gbq:.1f} GBq × {n_cycles} cycles",
+        "neutral"
+    )
+
+    key_result_caption(
+        "Integrated physical dose over the simulation"
     )
 
 
-# ============================================================
+# =============================================================================
 # SECONDARY METRICS
-# ============================================================
+# =============================================================================
 
-st.markdown(
-    '<div class="section-header">Secondary metrics</div>',
-    unsafe_allow_html=True,
+st.subheader(
+    "Secondary metrics"
 )
 
-col1, col2, col3, col4 = st.columns(4)
+
+col1, col2, col3, col4 = st.columns(
+    4
+)
 
 
 with col1:
 
-    render_secondary_metric(
+    st.metric(
         "Critical dose rate",
         (
-            f'{results["critical_dose_rate_gy_h"]:.4f} Gy/h'
-        ),
-        (
-            f'{results["critical_dose_rate_gy_day"]:.4f} Gy/day'
-        ),
+            f"{summary['Critical dose rate (Gy/h)']:.4f} Gy/h"
+        )
+    )
+
+    st.caption(
+        "Rcrit = ln(2) / (α × Trep)"
     )
 
 
 with col2:
 
-    render_secondary_metric(
+    st.metric(
         "Peak physical rate",
         (
-            f'{results["peak_dose_rate_gy_h"]:.4f} Gy/h'
-        ),
-        (
-            f'Peak at day '
-            f'{results["peak_day"]:.1f}'
-        ),
+            f"{summary['Peak physical dose rate (Gy/h)']:.3f} Gy/h"
+        )
+    )
+
+    st.caption(
+        f"{summary['Peak physical dose rate (Gy/h)'] / critical_dose_rate_gy_h:.2f}× "
+        "critical rate"
     )
 
 
 with col3:
 
-    render_secondary_metric(
+    st.metric(
         "Time above critical rate",
         (
-            f'{results["time_above_critical_days"]:.1f} days'
-        ),
-        (
-            f'Longest continuous: '
-            f'{results["longest_continuous_above_days"]:.1f} days'
-        ),
+            f"{summary['Time above critical dose rate (days)']:.1f} d"
+        )
+    )
+
+    st.caption(
+        f"Longest continuous: "
+        f"{summary['Longest continuous time above critical (days)']:.1f} d"
     )
 
 
 with col4:
 
-    render_secondary_metric(
+    st.metric(
         "Effective cumulative dose",
         (
-            f'{results["cumulative_effective_dose_gy"]:.2f} Gy'
-        ),
-        "Dose-rate effectiveness applied",
+            f"{summary['Effective cumulative dose (Gy)']:.2f} Gy"
+        )
+    )
+
+    st.caption(
+        f"Gamma = {gamma:.2f}"
     )
 
 
-# ============================================================
-# MODEL TRAJECTORIES
-# ============================================================
+# =============================================================================
+# DOSE SCALING
+# =============================================================================
 
-st.markdown(
-    '<div class="section-header">Model trajectories</div>',
-    unsafe_allow_html=True,
+st.caption(
+    f"Dose scaling: {dose_scale:.2f}× "
+    f"(uptake scaling {uptake_scale:.2f}×; "
+    f"burden scaling {burden_scale:.2f}× "
+    f"relative to {REFERENCE_METASTATIC_BURDEN_ML:.0f} mL "
+    f"and {DEFAULT_TUMOUR_UPTAKE_PERCENT:.1f}% uptake)."
 )
+
+
+# =============================================================================
+# MODEL TRAJECTORIES
+# =============================================================================
+
+st.subheader(
+    "Model trajectories"
+)
+
+
+# =============================================================================
+# PLOT 1 — DOSE RATE
+# =============================================================================
+
+fig1, ax1 = plt.subplots(
+    figsize=(9, 5),
+    facecolor=PLOT_BACKGROUND
+)
+
+
+physical_rate_gy_h = (
+    physical_dose_rate_gy_day /
+    24.0
+)
+
+
+effective_rate_gy_h = (
+    effective_dose_rate_gy_day /
+    24.0
+)
+
+
+ax1.plot(
+    time_days,
+    physical_rate_gy_h,
+    color=COLOR_BLUE,
+    linewidth=2.4,
+    label="Physical dose rate",
+    zorder=3
+)
+
+
+ax1.plot(
+    time_days,
+    effective_rate_gy_h,
+    color=COLOR_ORANGE,
+    linewidth=2.0,
+    linestyle="--",
+    label="Effective dose rate",
+    zorder=3
+)
+
+
+ax1.axhline(
+    critical_dose_rate_gy_h,
+    color=COLOR_RED,
+    linestyle=":",
+    linewidth=1.7,
+    label="Critical dose rate",
+    zorder=2
+)
+
+
+add_treatment_markers(
+    ax1,
+    treatment_times
+)
+
+
+ax1.set_xlabel(
+    "Time (days)"
+)
+
+ax1.set_ylabel(
+    "Dose rate (Gy/h)"
+)
+
+ax1.set_title(
+    "Physical and effective dose rate"
+)
+
+
+style_axis(ax1)
+
+
+legend1 = ax1.legend(
+    frameon=True,
+    loc="best"
+)
+
+style_legend(legend1)
+
+fig1.tight_layout()
+
+
+# =============================================================================
+# PLOT 2 — TUMOUR BURDEN
+# =============================================================================
+
+fig2, ax2 = plt.subplots(
+    figsize=(9, 5),
+    facecolor=PLOT_BACKGROUND
+)
+
+
+ax2.plot(
+    time_days,
+    total_burden,
+    color=COLOR_BLUE,
+    linewidth=2.5,
+    label="Total burden",
+    zorder=3
+)
+
+
+ax2.plot(
+    time_days,
+    sensitive_burden,
+    color=COLOR_GREEN,
+    linewidth=1.9,
+    linestyle="--",
+    label="Sensitive",
+    zorder=3
+)
+
+
+ax2.plot(
+    time_days,
+    resistant_burden,
+    color=COLOR_ORANGE,
+    linewidth=1.9,
+    linestyle=":",
+    label="Resistant",
+    zorder=3
+)
+
+
+add_treatment_markers(
+    ax2,
+    treatment_times
+)
+
+
+ax2.set_xlabel(
+    "Time (days)"
+)
+
+ax2.set_ylabel(
+    "Tumour burden (mL)"
+)
+
+ax2.set_title(
+    "Tumour burden"
+)
+
+
+style_axis(ax2)
+
+
+legend2 = ax2.legend(
+    frameon=True,
+    loc="best"
+)
+
+style_legend(legend2)
+
+fig2.tight_layout()
+
+
+# =============================================================================
+# PLOT 3 — SENSITIVE / RESISTANT POPULATIONS
+# =============================================================================
+
+fig3, ax3 = plt.subplots(
+    figsize=(9, 5),
+    facecolor=PLOT_BACKGROUND
+)
+
+
+ax3.plot(
+    time_days,
+    sensitive_burden,
+    color=COLOR_GREEN,
+    linewidth=2.2,
+    label="Sensitive tumour",
+    zorder=3
+)
+
+
+ax3.plot(
+    time_days,
+    resistant_burden,
+    color=COLOR_ORANGE,
+    linewidth=2.2,
+    linestyle="--",
+    label="Resistant tumour",
+    zorder=3
+)
+
+
+ax3b = ax3.twinx()
+
+
+ax3b.plot(
+    time_days,
+    residual_resistant_burden_percent,
+    color=COLOR_PURPLE,
+    linewidth=2.0,
+    linestyle=":",
+    label="Residual resistant burden",
+    zorder=3
+)
+
+
+add_treatment_markers(
+    ax3,
+    treatment_times,
+    alpha=0.25
+)
+
+
+ax3.set_xlabel(
+    "Time (days)"
+)
+
+ax3.set_ylabel(
+    "Tumour burden (mL)"
+)
+
+ax3b.set_ylabel(
+    "Residual resistant burden (% of initial)"
+)
+
+ax3.set_title(
+    "Sensitive and resistant tumour populations"
+)
+
+
+style_axis(ax3)
+
+
+ax3b.set_facecolor(
+    "none"
+)
+
+ax3b.spines[
+    "top"
+].set_visible(False)
+
+ax3b.spines[
+    "right"
+].set_color(
+    PLOT_TEXT
+)
+
+ax3b.spines[
+    "right"
+].set_linewidth(
+    0.8
+)
+
+ax3b.tick_params(
+    colors=PLOT_TEXT,
+    direction="out",
+    length=4.5,
+    width=0.8
+)
+
+ax3b.yaxis.set_major_locator(
+    MaxNLocator(nbins=8)
+)
+
+ax3b.minorticks_on()
+
+ax3b.tick_params(
+    which="minor",
+    length=2.5,
+    width=0.5,
+    color=PLOT_TEXT
+)
+
+
+lines1, labels1 = ax3.get_legend_handles_labels()
+lines2, labels2 = ax3b.get_legend_handles_labels()
+
+
+legend3 = ax3.legend(
+    lines1 + lines2,
+    labels1 + labels2,
+    frameon=True,
+    loc="best"
+)
+
+style_legend(legend3)
+
+fig3.tight_layout()
+
+
+# =============================================================================
+# PLOT 4 — TCP
+# =============================================================================
+
+fig4, ax4 = plt.subplots(
+    figsize=(9, 5),
+    facecolor=PLOT_BACKGROUND
+)
+
+
+ax4.plot(
+    time_days,
+    tcp * 100.0,
+    color=COLOR_BLUE,
+    linewidth=2.5,
+    label="TCP",
+    zorder=3
+)
+
+
+ax4.axhline(
+    50.0,
+    color=COLOR_ORANGE,
+    linestyle="--",
+    linewidth=1.4,
+    label="50% TCP",
+    zorder=2
+)
+
+
+ax4.axhline(
+    90.0,
+    color=COLOR_GREEN,
+    linestyle=":",
+    linewidth=1.3,
+    label="90% TCP",
+    zorder=2
+)
+
+
+add_treatment_markers(
+    ax4,
+    treatment_times
+)
+
+
+ax4.set_xlabel(
+    "Time (days)"
+)
+
+ax4.set_ylabel(
+    "TCP (%)"
+)
+
+ax4.set_ylim(
+    0,
+    105
+)
+
+ax4.set_title(
+    "Tumour control probability"
+)
+
+
+style_axis(ax4)
+
+
+legend4 = ax4.legend(
+    frameon=True,
+    loc="best"
+)
+
+style_legend(legend4)
+
+fig4.tight_layout()
+
+
+# =============================================================================
+# DISPLAY 2 × 2
+# =============================================================================
 
 plot_col1, plot_col2 = st.columns(2)
 
 
 with plot_col1:
 
-    fig = make_dose_rate_plot(
-        results
-    )
-
     st.pyplot(
-        fig,
-        use_container_width=True,
+        fig1,
+        clear_figure=False
     )
-
-    plt.close(fig)
 
 
 with plot_col2:
 
-    fig = make_burden_plot(
-        results
-    )
-
     st.pyplot(
-        fig,
-        use_container_width=True,
+        fig2,
+        clear_figure=False
     )
-
-    plt.close(fig)
 
 
 plot_col3, plot_col4 = st.columns(2)
@@ -1881,35 +1940,23 @@ plot_col3, plot_col4 = st.columns(2)
 
 with plot_col3:
 
-    fig = make_population_plot(
-        results
-    )
-
     st.pyplot(
-        fig,
-        use_container_width=True,
+        fig3,
+        clear_figure=False
     )
-
-    plt.close(fig)
 
 
 with plot_col4:
 
-    fig = make_tcp_plot(
-        results
-    )
-
     st.pyplot(
-        fig,
-        use_container_width=True,
+        fig4,
+        clear_figure=False
     )
 
-    plt.close(fig)
 
-
-# ============================================================
+# =============================================================================
 # DETAILED MODEL SUMMARY
-# ============================================================
+# =============================================================================
 
 with st.expander(
     "Detailed model summary"
@@ -1917,10 +1964,11 @@ with st.expander(
 
     summary_col1, summary_col2 = st.columns(2)
 
+
     with summary_col1:
 
         st.markdown(
-            "### Treatment"
+            "### Treatment and dosimetry"
         )
 
         st.write(
@@ -1944,65 +1992,163 @@ with st.expander(
         )
 
         st.write(
-            f"Dose scaling factor: "
-            f"{results['dose_scale']:.3f}"
-        )
-
-        st.write(
-            f"Cumulative physical dose: "
-            f"{results['cumulative_physical_dose_gy']:.2f} Gy"
-        )
-
-        st.write(
-            f"Cumulative effective dose: "
-            f"{results['cumulative_effective_dose_gy']:.2f} Gy"
-        )
-
-    with summary_col2:
-
-        st.markdown(
-            "### Tumour dynamics"
-        )
-
-        st.write(
-            f"Initial burden: "
+            f"Initial metastatic burden: "
             f"{initial_burden_ml:.1f} mL"
         )
 
         st.write(
-            f"Sensitive fraction: "
-            f"{sensitive_fraction * 100.0:.1f}%"
+            f"Initial resistant burden: "
+            f"{initial_resistant_burden:.2f} mL"
         )
 
         st.write(
-            f"Initial resistant burden: "
-            f"{results['initial_resistant_burden']:.1f} mL"
+            f"Uptake scaling: "
+            f"{uptake_scale:.3f}×"
+        )
+
+        st.write(
+            f"Burden scaling: "
+            f"{burden_scale:.3f}×"
+        )
+
+        st.write(
+            f"Overall dose scaling: "
+            f"{dose_scale:.3f}×"
+        )
+
+        st.write(
+            f"Lu-177 physical half-life: "
+            f"{LU177_HALF_LIFE_DAYS:.3f} days"
+        )
+
+        st.write(
+            f"Critical dose rate: "
+            f"{critical_dose_rate_gy_h:.5f} Gy/h"
+        )
+
+        st.write(
+            f"Peak physical dose rate: "
+            f"{summary['Peak physical dose rate (Gy/h)']:.4f} Gy/h"
+        )
+
+        st.write(
+            f"Peak effective dose rate: "
+            f"{summary['Peak effective dose rate (Gy/h)']:.4f} Gy/h"
+        )
+
+        st.write(
+            f"Cumulative physical dose: "
+            f"{summary['Cumulative physical dose (Gy)']:.3f} Gy"
+        )
+
+        st.write(
+            f"Effective cumulative dose: "
+            f"{summary['Effective cumulative dose (Gy)']:.3f} Gy"
+        )
+
+
+    with summary_col2:
+
+        st.markdown(
+            "### Tumour response"
+        )
+
+        st.write(
+            f"Alpha: "
+            f"{alpha:.3f} Gy⁻¹"
+        )
+
+        st.write(
+            f"Trep: "
+            f"{trep_days:.1f} days"
+        )
+
+        st.write(
+            f"Initial sensitive fraction: "
+            f"{sensitive_fraction * 100:.1f}%"
+        )
+
+        st.write(
+            f"Initial resistant fraction: "
+            f"{(1.0 - sensitive_fraction) * 100:.1f}%"
+        )
+
+        st.write(
+            f"Tk / Trep: "
+            f"{resistant_tk_multiplier:.2f}"
+        )
+
+        st.write(
+            f"Resistant radio factor: "
+            f"{resistant_radio_factor:.2f}"
+        )
+
+        st.write(
+            f"Repopulation kickoff: "
+            f"{repopulation_kickoff:.1f} days"
         )
 
         st.write(
             f"Minimum tumour burden: "
-            f"{results['minimum_burden_ml']:.2f} mL"
+            f"{summary['Minimum tumour burden (mL)']:.2f} mL"
+        )
+
+        st.write(
+            f"Day of minimum burden: "
+            f"{summary['Day of minimum tumour burden']:.2f}"
+        )
+
+        st.write(
+            f"Final tumour burden: "
+            f"{summary['Final tumour burden (mL)']:.2f} mL"
         )
 
         st.write(
             f"Maximum TCP: "
-            f"{results['maximum_tcp'] * 100.0:.2f}%"
+            f"{summary['Maximum TCP (%)']:.2f}%"
         )
 
         st.write(
-            f"Residual resistant burden: "
-            f"{results['final_resistant_burden_percent']:.2f}%"
+            f"Day of maximum TCP: "
+            f"{summary['Day of maximum TCP']:.2f}"
         )
 
         st.write(
-            f"Resistant composition at end: "
-            f"{results['resistant_composition_fraction'][-1] * 100.0:.2f}%"
+            f"Final residual resistant burden: "
+            f"{summary['Final residual resistant burden (%)']:.2f}% "
+            f"of initial resistant burden"
+        )
+
+        st.write(
+            f"Final resistant composition: "
+            f"{summary['Final resistant composition (%)']:.2f}% "
+            f"of remaining tumour"
+        )
+
+        st.write(
+            f"Final sensitive burden: "
+            f"{summary['Final sensitive burden (mL)']:.3f} mL"
+        )
+
+        st.write(
+            f"Final resistant burden: "
+            f"{summary['Final resistant burden (mL)']:.3f} mL"
+        )
+
+        st.write(
+            f"Time above critical rate: "
+            f"{summary['Time above critical dose rate (days)']:.2f} days"
+        )
+
+        st.write(
+            f"Longest continuous period above critical: "
+            f"{summary['Longest continuous time above critical (days)']:.2f} days"
         )
 
 
-# ============================================================
-# MODEL ASSUMPTIONS AND LIMITATIONS
-# ============================================================
+# =============================================================================
+# ASSUMPTIONS AND LIMITATIONS
+# =============================================================================
 
 with st.expander(
     "Model assumptions and limitations"
@@ -2010,107 +2156,576 @@ with st.expander(
 
     st.markdown(
         """
-        **Tumour burden**
+### Tumour burden
 
-        Initial metastatic burden is treated as an aggregate tumour
-        volume rather than a single solid tumour. The model therefore
-        represents an average metastatic disease burden.
+The model treats the initial tumour burden as a total metastatic
+tumour burden in mL rather than as one solid tumour.
 
-        **Tumour uptake**
+The burden represents an aggregate tumour volume across metastatic
+sites.
 
-        Total tumour uptake is represented phenomenologically as a
-        percentage of administered activity associated with the total
-        tumour burden. The default condition is 234 mL total burden
-        and 1% tumour uptake.
+### Tumour uptake
 
-        Increasing uptake increases the average tumour dose rate.
-        Increasing total tumour burden at fixed total uptake decreases
-        the average dose rate per unit tumour burden.
+The total tumour uptake parameter represents an exploratory estimate
+of the fraction of administered Lu-177 activity associated with the
+total metastatic tumour burden.
 
-        This is not a substitute for lesion-level Lu-177 PSMA
-        dosimetry using measured activity-time curves.
+The current implementation uses:
 
-        **Radiation response**
+**Dose scaling = uptake scaling × inverse burden scaling**
 
-        Tumour killing follows a linear-quadratic formulation with
-        separate parameters for sensitive and resistant populations.
+with 234 mL and 1.0% uptake used as the reference condition.
 
-        **Resistant population**
+This is a phenomenological model and should not be interpreted as
+patient-specific dosimetry.
 
-        The resistant radio factor controls relative radiation
-        sensitivity. Tk/Trep controls relative repopulation kinetics.
+Actual Lu-177 PSMA dosimetry would ideally incorporate lesion-level
+activity concentrations, time-activity curves, residence times,
+physical decay, biological clearance, absorbed fractions, cross-dose
+and spatial heterogeneity.
 
-        **Critical dose rate**
+### Dose rate
 
-        The critical dose rate is calculated from the linear
-        radiosensitivity parameter and tumour repopulation time:
+Lu-177 activity is assumed to decay according to its physical
+half-life of 6.647 days.
 
-        rcrit = ln(2) / (alpha × Trep)
+### Critical dose rate
 
-        **Dose-rate effectiveness**
+The critical dose rate is calculated as:
 
-        The effective dose rate uses a direct relationship with the
-        physical dose rate relative to the calculated critical dose
-        rate. There is no independent gamma parameter in the user
-        interface.
+**Rcrit = ln(2) / (alpha × Trep)**
 
-        **TCP**
+where Trep is converted to hours.
 
-        TCP is represented using a normalised exploratory clonogenic
-        burden model. It is intended for comparative exploration of
-        treatment schedules rather than clinical prediction.
+### Radiation response
 
-        **Clinical interpretation**
+Radiation killing uses a linear-quadratic formulation.
 
-        The model does not include patient-specific lesion geometry,
-        heterogeneous PSMA expression, measured lesion TACs,
-        cross-dose, organ dosimetry, spatial dose heterogeneity,
-        fractionation repair, repopulation biology beyond the
-        phenomenological terms above, or individual patient TCP
-        calibration.
-        """
+The sensitive and resistant populations have different effective
+radiosensitivities.
+
+### Resistant disease
+
+Two different resistant-disease quantities are reported.
+
+**Residual resistant burden**
+
+R(t) / R0 × 100
+
+This represents the percentage of the initial resistant tumour burden
+that remains.
+
+This is the preferred metric for assessing whether the resistant
+component itself has been reduced by treatment.
+
+**Resistant composition**
+
+R(t) / [S(t) + R(t)] × 100
+
+This represents the percentage of the remaining tumour that is
+resistant.
+
+A high resistant composition does not necessarily mean that the
+resistant tumour has grown. It can also occur because the sensitive
+population has been preferentially eliminated.
+
+### Repopulation
+
+Repopulation begins after the specified repopulation kickoff time.
+
+### TCP
+
+TCP is implemented as a normalised exploratory model based on
+relative total tumour burden.
+
+The initial TCP is set to 10%.
+
+This should not be interpreted as a validated clinical TCP model or
+as a patient-specific probability of cure.
+
+### Treatment schedule
+
+Each treatment cycle is assumed to deliver the same administered
+activity.
+
+The model is intended primarily to explore interactions between
+activity, treatment interval, tumour burden, uptake, radiosensitivity,
+repopulation and resistant-cell dynamics.
+"""
     )
 
 
-# ============================================================
-# DOWNLOADS
-# ============================================================
+# =============================================================================
+# EXPORT RESULTS
+# =============================================================================
 
-st.markdown(
-    '<div class="section-header">Export results</div>',
-    unsafe_allow_html=True,
+st.subheader(
+    "Export results"
 )
 
-download_col1, download_col2 = st.columns(2)
+
+# =============================================================================
+# CSV
+# =============================================================================
+
+results_df = pd.DataFrame(
+    {
+
+        "Time_days":
+            time_days,
+
+        "Physical_dose_rate_Gy_day":
+            physical_dose_rate_gy_day,
+
+        "Physical_dose_rate_Gy_h":
+            physical_rate_gy_h,
+
+        "Effective_dose_rate_Gy_day":
+            effective_dose_rate_gy_day,
+
+        "Effective_dose_rate_Gy_h":
+            effective_rate_gy_h,
+
+        "Critical_dose_rate_Gy_h":
+            np.full_like(
+                time_days,
+                critical_dose_rate_gy_h
+            ),
+
+        "Dose_rate_ratio":
+            dose_rate_ratio,
+
+        "Dose_rate_effectiveness":
+            dose_rate_effectiveness,
+
+        "Total_burden_mL":
+            total_burden,
+
+        "Sensitive_burden_mL":
+            sensitive_burden,
+
+        "Resistant_burden_mL":
+            resistant_burden,
+
+        "Initial_resistant_burden_mL":
+            np.full_like(
+                time_days,
+                initial_resistant_burden
+            ),
+
+        "Residual_resistant_burden_percent":
+            residual_resistant_burden_percent,
+
+        "Resistant_composition_percent":
+            resistant_composition_fraction * 100.0,
+
+        "TCP_percent":
+            tcp * 100.0,
+
+        "Initial_burden_mL":
+            np.full_like(
+                time_days,
+                initial_burden_ml
+            ),
+
+        "Tumour_uptake_percent":
+            np.full_like(
+                time_days,
+                tumour_uptake_percent
+            ),
+
+        "Uptake_scaling":
+            np.full_like(
+                time_days,
+                uptake_scale
+            ),
+
+        "Burden_scaling":
+            np.full_like(
+                time_days,
+                burden_scale
+            ),
+
+        "Dose_scaling_factor":
+            np.full_like(
+                time_days,
+                dose_scale
+            ),
+    }
+)
 
 
-with download_col1:
-
-    csv_data = create_csv(
-        results
-    )
-
-    st.download_button(
-        label="Download trajectory CSV",
-        data=csv_data,
-        file_name=(
-            "Lu177_PSMA_model_trajectory.csv"
-        ),
-        mime="text/csv",
-    )
+csv_data = results_df.to_csv(
+    index=False
+).encode("utf-8")
 
 
-with download_col2:
+st.download_button(
+    label="Download model results (CSV)",
+    data=csv_data,
+    file_name="Lu177_PSMA_model_results.csv",
+    mime="text/csv"
+)
 
-    png_data = create_png_export(
-        results
-    )
 
-    st.download_button(
-        label="Download 600 dpi PNG",
-        data=png_data,
-        file_name=(
-            "Lu177_PSMA_model_trajectories_600dpi.png"
-        ),
-        mime="image/png",
-    )
+# =============================================================================
+# 600 DPI EXPORT FIGURE
+# =============================================================================
+
+export_fig = plt.figure(
+    figsize=(16, 12),
+    facecolor=PLOT_BACKGROUND
+)
+
+
+# =============================================================================
+# EXPORT PANEL 1 — DOSE RATE
+# =============================================================================
+
+export_ax1 = export_fig.add_subplot(221)
+
+
+export_ax1.plot(
+    time_days,
+    physical_rate_gy_h,
+    color=COLOR_BLUE,
+    linewidth=2.2,
+    label="Physical dose rate"
+)
+
+
+export_ax1.plot(
+    time_days,
+    effective_rate_gy_h,
+    color=COLOR_ORANGE,
+    linewidth=1.9,
+    linestyle="--",
+    label="Effective dose rate"
+)
+
+
+export_ax1.axhline(
+    critical_dose_rate_gy_h,
+    color=COLOR_RED,
+    linestyle=":",
+    linewidth=1.5,
+    label="Critical dose rate"
+)
+
+
+add_treatment_markers(
+    export_ax1,
+    treatment_times
+)
+
+
+export_ax1.set_title(
+    "Physical vs effective dose rate"
+)
+
+export_ax1.set_xlabel(
+    "Time (days)"
+)
+
+export_ax1.set_ylabel(
+    "Dose rate (Gy/h)"
+)
+
+
+style_axis(export_ax1)
+
+
+export_legend1 = export_ax1.legend(
+    frameon=True
+)
+
+style_legend(export_legend1)
+
+
+# =============================================================================
+# EXPORT PANEL 2 — TUMOUR BURDEN
+# =============================================================================
+
+export_ax2 = export_fig.add_subplot(222)
+
+
+export_ax2.plot(
+    time_days,
+    total_burden,
+    color=COLOR_BLUE,
+    linewidth=2.3,
+    label="Total burden"
+)
+
+
+export_ax2.plot(
+    time_days,
+    sensitive_burden,
+    color=COLOR_GREEN,
+    linewidth=1.8,
+    linestyle="--",
+    label="Sensitive"
+)
+
+
+export_ax2.plot(
+    time_days,
+    resistant_burden,
+    color=COLOR_ORANGE,
+    linewidth=1.8,
+    linestyle=":",
+    label="Resistant"
+)
+
+
+add_treatment_markers(
+    export_ax2,
+    treatment_times
+)
+
+
+export_ax2.set_title(
+    "Tumour burden"
+)
+
+export_ax2.set_xlabel(
+    "Time (days)"
+)
+
+export_ax2.set_ylabel(
+    "Tumour burden (mL)"
+)
+
+
+style_axis(export_ax2)
+
+
+export_legend2 = export_ax2.legend(
+    frameon=True
+)
+
+style_legend(export_legend2)
+
+
+# =============================================================================
+# EXPORT PANEL 3 — RESISTANT DISEASE
+# =============================================================================
+
+export_ax3 = export_fig.add_subplot(223)
+
+
+export_ax3.plot(
+    time_days,
+    sensitive_burden,
+    color=COLOR_GREEN,
+    linewidth=2.0,
+    label="Sensitive tumour"
+)
+
+
+export_ax3.plot(
+    time_days,
+    resistant_burden,
+    color=COLOR_ORANGE,
+    linewidth=2.0,
+    linestyle="--",
+    label="Resistant tumour"
+)
+
+
+export_ax3b = export_ax3.twinx()
+
+
+export_ax3b.plot(
+    time_days,
+    residual_resistant_burden_percent,
+    color=COLOR_PURPLE,
+    linewidth=1.9,
+    linestyle=":",
+    label="Residual resistant burden"
+)
+
+
+add_treatment_markers(
+    export_ax3,
+    treatment_times,
+    alpha=0.22
+)
+
+
+export_ax3.set_title(
+    "Sensitive and resistant tumour populations"
+)
+
+export_ax3.set_xlabel(
+    "Time (days)"
+)
+
+export_ax3.set_ylabel(
+    "Tumour burden (mL)"
+)
+
+export_ax3b.set_ylabel(
+    "Residual resistant burden (% of initial)"
+)
+
+
+style_axis(export_ax3)
+
+
+export_ax3b.set_facecolor(
+    "none"
+)
+
+export_ax3b.spines[
+    "top"
+].set_visible(False)
+
+export_ax3b.spines[
+    "right"
+].set_color(
+    PLOT_TEXT
+)
+
+export_ax3b.tick_params(
+    colors=PLOT_TEXT,
+    direction="out",
+    length=4,
+    width=0.8
+)
+
+export_ax3b.yaxis.set_major_locator(
+    MaxNLocator(nbins=8)
+)
+
+
+lines_a, labels_a = (
+    export_ax3.get_legend_handles_labels()
+)
+
+lines_b, labels_b = (
+    export_ax3b.get_legend_handles_labels()
+)
+
+
+export_legend3 = export_ax3.legend(
+    lines_a + lines_b,
+    labels_a + labels_b,
+    frameon=True
+)
+
+style_legend(export_legend3)
+
+
+# =============================================================================
+# EXPORT PANEL 4 — TCP
+# =============================================================================
+
+export_ax4 = export_fig.add_subplot(224)
+
+
+export_ax4.plot(
+    time_days,
+    tcp * 100.0,
+    color=COLOR_BLUE,
+    linewidth=2.3,
+    label="TCP"
+)
+
+
+export_ax4.axhline(
+    50.0,
+    color=COLOR_ORANGE,
+    linestyle="--",
+    linewidth=1.2,
+    label="50% TCP"
+)
+
+
+export_ax4.axhline(
+    90.0,
+    color=COLOR_GREEN,
+    linestyle=":",
+    linewidth=1.2,
+    label="90% TCP"
+)
+
+
+add_treatment_markers(
+    export_ax4,
+    treatment_times
+)
+
+
+export_ax4.set_title(
+    "Tumour control probability"
+)
+
+export_ax4.set_xlabel(
+    "Time (days)"
+)
+
+export_ax4.set_ylabel(
+    "TCP (%)"
+)
+
+export_ax4.set_ylim(
+    0,
+    105
+)
+
+
+style_axis(export_ax4)
+
+
+export_legend4 = export_ax4.legend(
+    frameon=True
+)
+
+style_legend(export_legend4)
+
+
+# =============================================================================
+# FINALISE EXPORT
+# =============================================================================
+
+export_fig.tight_layout(
+    pad=2.0
+)
+
+
+png_buffer = io.BytesIO()
+
+
+export_fig.savefig(
+    png_buffer,
+    format="png",
+    dpi=600,
+    bbox_inches="tight",
+    facecolor=PLOT_BACKGROUND,
+    edgecolor=PLOT_BACKGROUND
+)
+
+
+png_buffer.seek(0)
+
+
+st.download_button(
+    label="Download trajectories (600 dpi PNG)",
+    data=png_buffer,
+    file_name="Lu177_PSMA_model_trajectories_600dpi.png",
+    mime="image/png"
+)
+
+
+plt.close(export_fig)
+
+
+# =============================================================================
+# CLEAN UP DISPLAY FIGURES
+# =============================================================================
+
+plt.close(fig1)
+plt.close(fig2)
+plt.close(fig3)
+plt.close(fig4)
