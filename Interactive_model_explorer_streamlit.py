@@ -25,6 +25,7 @@
 # =============================================================================
 
 import io
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -108,8 +109,6 @@ PLOT_BACKGROUND = "#000000"
 PLOT_TEXT = "#F2F2F2"
 PLOT_GRID = "#666666"
 PLOT_TREATMENT = "#A0A0A0"
-
-COLOR_TREATMENT = "#A0A0A0"
 
 COLOR_BLUE = "#4C9BE8"
 COLOR_ORANGE = "#FF8C42"
@@ -267,7 +266,10 @@ def calculate_uptake_scale(tumour_uptake_percent):
 
     1% uptake = scale of 1.
     """
-    return tumour_uptake_percent / DEFAULT_TUMOUR_UPTAKE_PERCENT
+    return (
+        tumour_uptake_percent
+        / DEFAULT_TUMOUR_UPTAKE_PERCENT
+    )
 
 
 def calculate_burden_scale(initial_burden_ml):
@@ -279,15 +281,26 @@ def calculate_burden_scale(initial_burden_ml):
     For a fixed total tumour uptake fraction, a larger total burden
     corresponds to a lower average dose rate per unit tumour burden.
     """
-    return REFERENCE_METASTATIC_BURDEN_ML / initial_burden_ml
+    return (
+        REFERENCE_METASTATIC_BURDEN_ML
+        / initial_burden_ml
+    )
 
 
-def calculate_dose_scale(initial_burden_ml, tumour_uptake_percent):
+def calculate_dose_scale(
+    initial_burden_ml,
+    tumour_uptake_percent,
+):
     """
     Combined dose scaling from tumour burden and uptake.
     """
-    uptake_scale = calculate_uptake_scale(tumour_uptake_percent)
-    burden_scale = calculate_burden_scale(initial_burden_ml)
+    uptake_scale = calculate_uptake_scale(
+        tumour_uptake_percent
+    )
+
+    burden_scale = calculate_burden_scale(
+        initial_burden_ml
+    )
 
     return uptake_scale * burden_scale
 
@@ -303,12 +316,18 @@ def generate_time_grid(simulation_days):
     )
 
 
-def generate_administration_times(n_cycles, interval_days):
+def generate_administration_times(
+    n_cycles,
+    interval_days,
+):
     """
     Administration times for repeated cycles.
     """
     return np.array(
-        [i * interval_days for i in range(n_cycles)],
+        [
+            i * interval_days
+            for i in range(n_cycles)
+        ],
         dtype=float,
     )
 
@@ -337,9 +356,11 @@ def calculate_physical_dose_rate(
 
     time_days = np.asarray(time_days)
 
-    administration_times = generate_administration_times(
-        n_cycles,
-        interval_days,
+    administration_times = (
+        generate_administration_times(
+            n_cycles,
+            interval_days,
+        )
     )
 
     dose_scale = calculate_dose_scale(
@@ -354,7 +375,9 @@ def calculate_physical_dose_rate(
 
     for t_admin in administration_times:
 
-        elapsed = time_days - t_admin
+        elapsed = (
+            time_days - t_admin
+        )
 
         active = elapsed >= 0.0
 
@@ -417,10 +440,13 @@ def calculate_effective_dose_rate(
     )
 
     if critical_dose_rate_gy_day <= 0:
+
         effectiveness = np.ones_like(
             physical_dose_rate_gy_day
         )
+
     else:
+
         dose_rate_ratio = (
             physical_dose_rate_gy_day
             / critical_dose_rate_gy_day
@@ -439,7 +465,10 @@ def calculate_effective_dose_rate(
         * effectiveness
     )
 
-    return effectiveness, effective_dose_rate
+    return (
+        effectiveness,
+        effective_dose_rate,
+    )
 
 
 # =============================================================================
@@ -494,11 +523,13 @@ def simulate_tumour_dynamics(
     initial_resistant_burden = resistant[0]
 
     beta_sensitive = (
-        alpha * DEFAULT_BETA_ALPHA
+        alpha
+        * DEFAULT_BETA_ALPHA
     )
 
     alpha_resistant = (
-        alpha * resistant_radio_factor
+        alpha
+        * resistant_radio_factor
     )
 
     beta_resistant = (
@@ -507,7 +538,8 @@ def simulate_tumour_dynamics(
     )
 
     sensitive_growth_rate = (
-        np.log(2.0) / trep_days
+        np.log(2.0)
+        / trep_days
     )
 
     resistant_growth_rate = (
@@ -546,11 +578,13 @@ def simulate_tumour_dynamics(
         ):
 
             S *= np.exp(
-                sensitive_growth_rate * dt
+                sensitive_growth_rate
+                * dt
             )
 
             R *= np.exp(
-                resistant_growth_rate * dt
+                resistant_growth_rate
+                * dt
             )
 
         # ---------------------------------------------------------------------
@@ -567,7 +601,8 @@ def simulate_tumour_dynamics(
         # ---------------------------------------------------------------------
 
         survival_sensitive = np.exp(
-            -alpha * dose_interval_gy
+            -alpha
+            * dose_interval_gy
             -beta_sensitive
             * dose_interval_gy ** 2
         )
@@ -582,8 +617,15 @@ def simulate_tumour_dynamics(
         S *= survival_sensitive
         R *= survival_resistant
 
-        sensitive[i] = max(S, 0.0)
-        resistant[i] = max(R, 0.0)
+        sensitive[i] = max(
+            S,
+            0.0,
+        )
+
+        resistant[i] = max(
+            R,
+            0.0,
+        )
 
     total_burden = (
         sensitive + resistant
@@ -733,9 +775,14 @@ def calculate_longest_continuous_above(
     longest = 0.0
     current = 0.0
 
-    for i in range(len(time_days) - 1):
+    for i in range(
+        len(time_days) - 1
+    ):
 
-        if above[i] and above[i + 1]:
+        if (
+            above[i]
+            and above[i + 1]
+        ):
 
             interval = (
                 time_days[i + 1]
@@ -784,7 +831,9 @@ def calculate_summary(
         tumour_results["resistant"]
     )
 
-    tcp = tumour_results["tcp"]
+    tcp = (
+        tumour_results["tcp"]
+    )
 
     residual_resistant = (
         tumour_results[
@@ -807,7 +856,9 @@ def calculate_summary(
     )
 
     min_resistant_index = int(
-        np.argmin(residual_resistant)
+        np.argmin(
+            residual_resistant
+        )
     )
 
     peak_rate_index = int(
@@ -836,7 +887,10 @@ def calculate_summary(
         out=np.zeros_like(
             physical_dose_rate_gy_day
         ),
-        where=critical_dose_rate_gy_day > 0,
+        where=(
+            critical_dose_rate_gy_day
+            > 0
+        ),
     )
 
     time_above = (
@@ -855,10 +909,13 @@ def calculate_summary(
         )
     )
 
-    final_burden = total_burden[-1]
+    final_burden = (
+        total_burden[-1]
+    )
 
     final_resistant_composition = (
-        resistant_composition[-1] * 100.0
+        resistant_composition[-1]
+        * 100.0
     )
 
     final_residual_resistant = (
@@ -867,25 +924,45 @@ def calculate_summary(
 
     return {
         "minimum_tumour_burden_ml": (
-            float(total_burden[min_burden_index])
+            float(
+                total_burden[
+                    min_burden_index
+                ]
+            )
         ),
         "minimum_tumour_burden_day": (
-            float(time_days[min_burden_index])
+            float(
+                time_days[
+                    min_burden_index
+                ]
+            )
         ),
         "final_tumour_burden_ml": (
             float(final_burden)
         ),
         "maximum_tcp_percent": (
-            float(np.max(tcp) * 100.0)
+            float(
+                np.max(tcp)
+                * 100.0
+            )
         ),
         "maximum_tcp_day": (
-            float(time_days[max_tcp_index])
+            float(
+                time_days[
+                    max_tcp_index
+                ]
+            )
         ),
         "final_tcp_percent": (
-            float(tcp[-1] * 100.0)
+            float(
+                tcp[-1]
+                * 100.0
+            )
         ),
         "final_residual_resistant_percent": (
-            float(final_residual_resistant)
+            float(
+                final_residual_resistant
+            )
         ),
         "minimum_residual_resistant_percent": (
             float(
@@ -902,16 +979,24 @@ def calculate_summary(
             )
         ),
         "final_resistant_composition_percent": (
-            float(final_resistant_composition)
+            float(
+                final_resistant_composition
+            )
         ),
         "final_sensitive_burden_ml": (
-            float(sensitive[-1])
+            float(
+                sensitive[-1]
+            )
         ),
         "final_resistant_burden_ml": (
-            float(resistant[-1])
+            float(
+                resistant[-1]
+            )
         ),
         "critical_dose_rate_gy_day": (
-            float(critical_dose_rate_gy_day)
+            float(
+                critical_dose_rate_gy_day
+            )
         ),
         "critical_dose_rate_gy_h": (
             float(
@@ -930,14 +1015,23 @@ def calculate_summary(
             float(
                 physical_dose_rate_gy_day[
                     peak_rate_index
-                ] / 24.0
+                ]
+                / 24.0
             )
         ),
         "peak_rate_day": (
-            float(time_days[peak_rate_index])
+            float(
+                time_days[
+                    peak_rate_index
+                ]
+            )
         ),
         "peak_to_critical_ratio": (
-            float(np.max(dose_rate_ratio))
+            float(
+                np.max(
+                    dose_rate_ratio
+                )
+            )
         ),
         "time_above_critical_days": (
             float(time_above)
@@ -946,13 +1040,19 @@ def calculate_summary(
             float(longest_above)
         ),
         "cumulative_physical_dose_gy": (
-            float(cumulative_physical_dose)
+            float(
+                cumulative_physical_dose
+            )
         ),
         "cumulative_effective_dose_gy": (
-            float(cumulative_effective_dose)
+            float(
+                cumulative_effective_dose
+            )
         ),
         "final_effective_dose_rate_gy_day": (
-            float(effective_dose_rate_gy_day[-1])
+            float(
+                effective_dose_rate_gy_day[-1]
+            )
         ),
         "initial_resistant_burden_ml": (
             float(
@@ -961,9 +1061,15 @@ def calculate_summary(
                 ]
             )
         ),
-        "activity_gbq": float(activity_gbq),
-        "n_cycles": int(n_cycles),
-        "interval_days": float(interval_days),
+        "activity_gbq": float(
+            activity_gbq
+        ),
+        "n_cycles": int(
+            n_cycles
+        ),
+        "interval_days": float(
+            interval_days
+        ),
         "initial_burden_ml": float(
             initial_burden_ml
         ),
@@ -1287,8 +1393,13 @@ def build_plots(
         COLOR_PURPLE
     )
 
-    lines1, labels1 = ax3.get_legend_handles_labels()
-    lines2, labels2 = ax3b.get_legend_handles_labels()
+    lines1, labels1 = (
+        ax3.get_legend_handles_labels()
+    )
+
+    lines2, labels2 = (
+        ax3b.get_legend_handles_labels()
+    )
 
     ax3.legend(
         lines1 + lines2,
@@ -1453,26 +1564,19 @@ def render_key_metric(
 ):
     """
     Render a primary key result card.
+
+    IMPORTANT:
+    Streamlit must be explicitly told to render the HTML.
+    Without unsafe_allow_html=True, the HTML source can appear
+    literally on the page.
     """
 
     html = f"""
     <div class="metric-card">
-        <div class="metric-title">
-            {title}
-        </div>
-
-        <div class="metric-value">
-            {value}
-        </div>
-
-        {key_result_status(
-            status_text,
-            status,
-        )}
-
-        {key_result_caption(
-            caption
-        )}
+        <div class="metric-title">{title}</div>
+        <div class="metric-value">{value}</div>
+        {key_result_status(status_text, status)}
+        {key_result_caption(caption)}
     </div>
     """
 
@@ -1493,7 +1597,6 @@ def render_secondary_metric(
 
     html = f"""
     <div class="metric-card-secondary">
-
         <div class="metric-title-secondary">
             {title}
         </div>
@@ -1505,7 +1608,6 @@ def render_secondary_metric(
         <div class="metric-caption">
             {caption}
         </div>
-
     </div>
     """
 
@@ -1670,9 +1772,15 @@ interval_days = st.sidebar.slider(
 
 tumour_uptake_percent = st.sidebar.slider(
     "Total tumour uptake (%)",
-    min_value=float(TUMOUR_UPTAKE_MIN_PERCENT),
-    max_value=float(TUMOUR_UPTAKE_MAX_PERCENT),
-    value=float(DEFAULT_TUMOUR_UPTAKE_PERCENT),
+    min_value=float(
+        TUMOUR_UPTAKE_MIN_PERCENT
+    ),
+    max_value=float(
+        TUMOUR_UPTAKE_MAX_PERCENT
+    ),
+    value=float(
+        DEFAULT_TUMOUR_UPTAKE_PERCENT
+    ),
     step=0.1,
     format="%.1f",
     help=(
@@ -1725,7 +1833,9 @@ physical_dose_rate_gy_day = (
         n_cycles=n_cycles,
         interval_days=interval_days,
         initial_burden_ml=initial_burden_ml,
-        tumour_uptake_percent=tumour_uptake_percent,
+        tumour_uptake_percent=(
+            tumour_uptake_percent
+        ),
     )
 )
 
@@ -1778,7 +1888,9 @@ summary = calculate_summary(
     n_cycles=n_cycles,
     interval_days=interval_days,
     initial_burden_ml=initial_burden_ml,
-    tumour_uptake_percent=tumour_uptake_percent,
+    tumour_uptake_percent=(
+        tumour_uptake_percent
+    ),
 )
 
 
@@ -1808,7 +1920,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-key_col1, key_col2, key_col3, key_col4 = st.columns(4)
+key_col1, key_col2, key_col3, key_col4 = (
+    st.columns(4)
+)
 
 
 # -----------------------------------------------------------------------------
@@ -1816,7 +1930,9 @@ key_col1, key_col2, key_col3, key_col4 = st.columns(4)
 # -----------------------------------------------------------------------------
 
 minimum_burden = (
-    summary["minimum_tumour_burden_ml"]
+    summary[
+        "minimum_tumour_burden_ml"
+    ]
 )
 
 burden_reduction_percent = (
@@ -1853,7 +1969,9 @@ with key_col1:
 # -----------------------------------------------------------------------------
 
 maximum_tcp = (
-    summary["maximum_tcp_percent"]
+    summary[
+        "maximum_tcp_percent"
+    ]
 )
 
 tcp_change = (
@@ -1895,11 +2013,15 @@ with key_col2:
 # -----------------------------------------------------------------------------
 
 final_resistant = (
-    summary["final_residual_resistant_percent"]
+    summary[
+        "final_residual_resistant_percent"
+    ]
 )
 
 initial_resistant_ml = (
-    summary["initial_resistant_burden_ml"]
+    summary[
+        "initial_resistant_burden_ml"
+    ]
 )
 
 with key_col3:
@@ -1923,8 +2045,7 @@ with key_col3:
             else
             "negative"
             if final_resistant > 100.0
-            else
-            "neutral"
+            else "neutral"
         ),
         caption=(
             "% of the initial resistant tumour burden remaining"
@@ -1966,9 +2087,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-secondary_col1, secondary_col2, secondary_col3, secondary_col4 = (
-    st.columns(4)
-)
+(
+    secondary_col1,
+    secondary_col2,
+    secondary_col3,
+    secondary_col4,
+) = st.columns(4)
 
 
 with secondary_col1:
@@ -2051,11 +2175,15 @@ st.markdown(
         critical_dose_rate_gy_day
     ),
     tumour_results=tumour_results,
-    administration_times=administration_times,
+    administration_times=(
+        administration_times
+    ),
 )
 
 
-plot_col1, plot_col2 = st.columns(2)
+plot_col1, plot_col2 = (
+    st.columns(2)
+)
 
 with plot_col1:
 
@@ -2072,7 +2200,9 @@ with plot_col2:
     )
 
 
-plot_col3, plot_col4 = st.columns(2)
+plot_col3, plot_col4 = (
+    st.columns(2)
+)
 
 with plot_col3:
 
@@ -2097,11 +2227,15 @@ with st.expander(
     "Detailed model summary"
 ):
 
-    detail_col1, detail_col2 = st.columns(2)
+    detail_col1, detail_col2 = (
+        st.columns(2)
+    )
 
     with detail_col1:
 
-        st.markdown("#### Tumour response")
+        st.markdown(
+            "#### Tumour response"
+        )
 
         st.write(
             f"Initial tumour burden: "
@@ -2155,7 +2289,9 @@ with st.expander(
 
     with detail_col2:
 
-        st.markdown("#### Dose-rate behaviour")
+        st.markdown(
+            "#### Dose-rate behaviour"
+        )
 
         st.write(
             f"Critical dose rate: "
@@ -2344,7 +2480,8 @@ csv_df = pd.DataFrame(
         ),
 
         "physical_dose_rate_Gy_per_hour": (
-            physical_dose_rate_gy_day / 24.0
+            physical_dose_rate_gy_day
+            / 24.0
         ),
 
         "effective_dose_rate_Gy_per_day": (
@@ -2352,7 +2489,8 @@ csv_df = pd.DataFrame(
         ),
 
         "effective_dose_rate_Gy_per_hour": (
-            effective_dose_rate_gy_day / 24.0
+            effective_dose_rate_gy_day
+            / 24.0
         ),
 
         "critical_dose_rate_Gy_per_day": (
@@ -2372,15 +2510,21 @@ csv_df = pd.DataFrame(
         ),
 
         "total_tumour_burden_ml": (
-            tumour_results["total_burden"]
+            tumour_results[
+                "total_burden"
+            ]
         ),
 
         "sensitive_tumour_burden_ml": (
-            tumour_results["sensitive"]
+            tumour_results[
+                "sensitive"
+            ]
         ),
 
         "resistant_tumour_burden_ml": (
-            tumour_results["resistant"]
+            tumour_results[
+                "resistant"
+            ]
         ),
 
         "initial_resistant_burden_ml": (
@@ -2406,7 +2550,9 @@ csv_df = pd.DataFrame(
         ),
 
         "TCP_percent": (
-            tumour_results["tcp"]
+            tumour_results[
+                "tcp"
+            ]
             * 100.0
         ),
 
@@ -2455,15 +2601,18 @@ csv_df = pd.DataFrame(
     }
 )
 
-csv_data = csv_df.to_csv(
-    index=False
-).encode("utf-8")
-
+csv_data = (
+    csv_df
+    .to_csv(index=False)
+    .encode("utf-8")
+)
 
 st.download_button(
     label="Download model results (CSV)",
     data=csv_data,
-    file_name="Lu177_PSMA_interactive_model_results.csv",
+    file_name=(
+        "Lu177_PSMA_interactive_model_results.csv"
+    ),
     mime="text/csv",
 )
 
@@ -2662,8 +2811,13 @@ ax2.spines["right"].set_color(
     COLOR_PURPLE
 )
 
-lines1, labels1 = ax.get_legend_handles_labels()
-lines2, labels2 = ax2.get_legend_handles_labels()
+lines1, labels1 = (
+    ax.get_legend_handles_labels()
+)
+
+lines2, labels2 = (
+    ax2.get_legend_handles_labels()
+)
 
 ax.legend(
     lines1 + lines2,
@@ -2760,7 +2914,9 @@ png_buffer.seek(0)
 st.download_button(
     label="Download high-resolution plots (600 dpi PNG)",
     data=png_buffer,
-    file_name="Lu177_PSMA_interactive_model_600dpi.png",
+    file_name=(
+        "Lu177_PSMA_interactive_model_600dpi.png"
+    ),
     mime="image/png",
 )
 
