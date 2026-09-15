@@ -1041,15 +1041,15 @@ def add_treatment_markers(
     """
     Add treatment cycle markers.
 
-    Grey dotted lines distinguish treatment administrations from
-    biological trajectories.
+    Grey dotted lines distinguish treatment administrations
+    from biological trajectories.
     """
 
     for t in administration_times:
 
         ax.axvline(
             t,
-            color=COLOR_TREATMENT,
+            color=PLOT_TREATMENT,
             linestyle=":",
             linewidth=0.8,
             alpha=0.65,
